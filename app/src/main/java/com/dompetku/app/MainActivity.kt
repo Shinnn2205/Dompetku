@@ -72,7 +72,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        webView = WebView(this)
+        webView = WebView(this).apply {
+            overScrollMode = WebView.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+        }
         setContentView(webView)
 
         val assetLoader = WebViewAssetLoader.Builder()

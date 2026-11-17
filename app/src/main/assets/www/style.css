@@ -19,18 +19,18 @@
 }
 
 [data-theme="dark"] {
-  --bg: #070b14;
-  --surface: #111827;
-  --surface-2: #1a2335;
-  --border: #253147;
-  --text: #f8fafc;
+  --bg: #0b0f19;
+  --surface: #131a2a;
+  --surface-2: #1b2438;
+  --border: rgba(148, 163, 184, 0.14);
+  --text: #f1f5f9;
   --text-muted: #94a3b8;
   --primary: #10b981;
   --primary-dark: #34d399;
-  --primary-soft: rgba(16, 185, 129, 0.16);
-  --danger-soft: rgba(239, 68, 68, 0.18);
-  --warning-soft: rgba(245, 158, 11, 0.18);
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --primary-soft: rgba(16, 185, 129, 0.14);
+  --danger-soft: rgba(239, 68, 68, 0.14);
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
 * {
@@ -87,14 +87,14 @@ button:active {
 }
 
 .brand-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #10b981, #0ea5e9);
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
   display: grid;
   place-items: center;
-  font-size: 20px;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
 }
 
 .brand-row {
@@ -290,8 +290,13 @@ button:active {
   flex-shrink: 0;
 }
 
-.action-icon-wrap.income { background: var(--primary-soft); }
-.action-icon-wrap.expense { background: var(--danger-soft); }
+.action-icon-wrap.income { background: var(--primary-soft); color: var(--primary-dark); }
+.action-icon-wrap.expense { background: var(--danger-soft); color: var(--danger); }
+
+.cooking-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(14, 165, 233, 0.06));
+  border-color: rgba(16, 185, 129, 0.24);
+}
 
 /* Cards */
 .card {
@@ -878,7 +883,11 @@ button:active {
 }
 
 .nav-item.active { color: var(--primary); }
-.nav-icon { font-size: 20px; }
+.nav-icon {
+  display: grid;
+  place-items: center;
+  height: 22px;
+}
 .nav-label { font-size: 0.68rem; font-weight: 700; }
 
 .nav-fab {
