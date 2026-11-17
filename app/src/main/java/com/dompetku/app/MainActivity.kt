@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,9 +18,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,10 +36,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -106,6 +110,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             var appState by remember { mutableStateOf(initialState) }
             var unlocked by remember { mutableStateOf(initialState.pin == null) }
+
+            LaunchedEffect(appState.darkTheme) {
+                enableEdgeToEdge(
+                    statusBarStyle = if (appState.darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (appState.darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    }
+                )
+            }
 
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner) {
@@ -285,6 +304,7 @@ fun DompetKuApp(
     onResetAll: () -> Unit
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var currentTab by remember { mutableIntStateOf(0) }
     var showAddTxSheet by remember { mutableStateOf(false) }
     var addTxInitialType by remember { mutableStateOf(TxType.EXPENSE) }
@@ -328,10 +348,12 @@ fun DompetKuApp(
                 }
             }
             if (reasons.isNotEmpty()) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 blockedTxPrompt = tx to reasons.joinToString("\n")
                 return
             }
         }
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         onUpdateState(state.copy(transactions = state.transactions + tx))
         showAddTxSheet = false
         Toast.makeText(context, "Transaksi disimpan", Toast.LENGTH_SHORT).show()
@@ -932,7 +954,46 @@ fun HomeScreen(
             }
         }
 
-        // 6. RECENT ACTIVITY
+        // 6. CATEGORY BREAKDOWN (MONTH)
+        val monthExpensesByCat = state.transactions
+            .filter { it.type == TxType.EXPENSE && it.date.startsWith(monthPrefix) }
+            .groupBy { it.category }
+            .mapValues { (_, list) -> list.sumOf { it.amount } }
+            .entries
+            .sortedByDescending { it.value }
+            .take(4)
+
+        if (monthExpensesByCat.isNotEmpty()) {
+            item {
+                val totalMonth = monthExpensesByCat.sumOf { it.value }.coerceAtLeast(1L)
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Pengeluaran Bulan Ini", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        monthExpensesByCat.forEach { (cat, amt) ->
+                            val frac = (amt.toFloat() / totalMonth.toFloat()).coerceIn(0f, 1f)
+                            val pct = (frac * 100).toInt()
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(cat, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${formatRp(amt, state.hideBalance)} ($pct%)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                                LinearProgressIndicator(
+                                    progress = { frac },
+                                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(999.dp)),
+                                    color = EmeraldPrimary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 7. RECENT ACTIVITY
         item {
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -1071,12 +1132,11 @@ fun HistoryScreen(state: AppState, onDeleteTx: (String) -> Unit) {
             }
         } else {
             items(filtered, key = { it.id }) { tx ->
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface
                 ) {
-                    Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
                         TxRow(tx = tx, masked = state.hideBalance, onDelete = { onDeleteTx(tx.id) })
                     }
                 }
@@ -1103,21 +1163,20 @@ fun GoalsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text("Total Tabungan", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatRp(totalSaved, state.hideBalance), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
+                        Text(formatRp(totalSaved, state.hideBalance), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
                     }
-                    Button(onClick = { showNewGoal = true }, shape = RoundedCornerShape(12.dp)) {
+                    Button(onClick = { showNewGoal = true }, shape = RoundedCornerShape(14.dp)) {
                         Text("+ Target")
                     }
                 }
@@ -1125,35 +1184,41 @@ fun GoalsScreen(
         }
 
         items(state.goals, key = { it.id }) { g ->
-            val pct = ((g.saved.toFloat() / g.target.coerceAtLeast(1L)) * 100).toInt().coerceIn(0, 100)
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            val rawGoalProg = (g.saved.toFloat() / g.target.coerceAtLeast(1L)).coerceIn(0f, 1f)
+            val animProg by animateFloatAsState(targetValue = rawGoalProg, animationSpec = tween(500), label = "g_prog")
+            val pct = (rawGoalProg * 100).toInt()
+            val kurang = (g.target - g.saved).coerceAtLeast(0L)
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(g.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                         Text("$pct%", fontWeight = FontWeight.Bold, color = EmeraldPrimary)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     LinearProgressIndicator(
-                        progress = { pct / 100f },
-                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)),
+                        progress = { animProg },
+                        modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(999.dp)),
                         color = EmeraldPrimary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatRp(g.saved, state.hideBalance), fontWeight = FontWeight.Medium)
-                        Text("Target ${formatRp(g.target)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        Text(
+                            if (kurang == 0L) "Target Tercapai!" else "Kurang ${formatRp(kurang, state.hideBalance)}",
+                            color = if (kurang == 0L) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { depositGoal = g }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) {
+                        Button(onClick = { depositGoal = g }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
                             Text("Nabung")
                         }
-                        OutlinedButton(onClick = { onDeleteGoal(g.id) }, shape = RoundedCornerShape(10.dp)) {
+                        OutlinedButton(onClick = { onDeleteGoal(g.id) }, shape = RoundedCornerShape(12.dp)) {
                             Text("Hapus")
                         }
                     }
@@ -1208,6 +1273,14 @@ fun GoalsScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        listOf(10_000L to "+10rb", 20_000L to "+20rb", 50_000L to "+50rb", 100_000L to "+100rb").forEach { (v, lbl) ->
+                            SuggestionChip(
+                                onClick = { amtStr = ((amtStr.toLongOrNull() ?: 0L) + v).toString() },
+                                label = { Text(lbl, fontSize = 11.sp) }
+                            )
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { deduct = !deduct }) {
                         Checkbox(checked = deduct, onCheckedChange = { deduct = it })
                         Text("Potong dari saldo utama", style = MaterialTheme.typography.bodySmall)
@@ -1247,12 +1320,11 @@ fun ControlScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Kontrol Pengeluaran Harian", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
@@ -1317,12 +1389,11 @@ fun ControlScreen(
 
         items(state.bans, key = { it.id }) { b ->
             val streak = daysBetweenISO(b.lastBrokenDate ?: b.createdAt, todayISO())
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(b.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Switch(checked = b.active, onCheckedChange = { onToggleBan(b.id) })
@@ -1499,6 +1570,8 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     var showPinInput by remember { mutableStateOf(false) }
+    var confirmClearTx by remember { mutableStateOf(false) }
+    var confirmResetAll by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1538,10 +1611,10 @@ fun SettingsDialog(
                     OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) { Text("Impor") }
                 }
 
-                TextButton(onClick = onClearTx, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = { confirmClearTx = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Hapus Riwayat Transaksi Saja", color = WarnAmber)
                 }
-                TextButton(onClick = onResetAll, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = { confirmResetAll = true }, modifier = Modifier.fillMaxWidth()) {
                     Text("Hapus Semua Data (Reset Total)", color = DangerRed)
                 }
             }
@@ -1550,6 +1623,37 @@ fun SettingsDialog(
             TextButton(onClick = onDismiss) { Text("Tutup") }
         }
     )
+
+    if (confirmClearTx) {
+        AlertDialog(
+            onDismissRequest = { confirmClearTx = false },
+            title = { Text("Hapus Riwayat Transaksi?") },
+            text = { Text("Semua catatan pemasukan & pengeluaran akan dihapus, sedangkan target tabungan dan larangan tetap tersimpan.") },
+            confirmButton = {
+                Button(onClick = { confirmClearTx = false; onClearTx() }) { Text("Ya, Hapus") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearTx = false }) { Text("Batal") }
+            }
+        )
+    }
+
+    if (confirmResetAll) {
+        AlertDialog(
+            onDismissRequest = { confirmResetAll = false },
+            title = { Text("Reset Semua Data?") },
+            text = { Text("Seluruh transaksi, target tabungan, larangan jajan, dan PIN akan dihapus permanen dari HP ini.") },
+            confirmButton = {
+                Button(
+                    onClick = { confirmResetAll = false; onResetAll() },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+                ) { Text("Ya, Reset Total") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmResetAll = false }) { Text("Batal") }
+            }
+        )
+    }
 
     if (showPinInput) {
         var newPin by remember { mutableStateOf("") }
