@@ -91,23 +91,20 @@ class ReminderReceiver : BroadcastReceiver() {
         fun updateOngoingBudgetNotification(context: Context, state: AppState) {
             ensureChannel(context)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (!state.ongoingBar || state.dailyLimit <= 0L) {
+            if (!state.ongoingBar) {
                 nm.cancel(ONGOING_ID)
                 return
             }
 
-            val today = todayISO()
-            val spentToday = state.transactions
-                .filter { it.type == TxType.EXPENSE && it.date == today }
-                .sumOf { it.amount }
-            val remaining = state.dailyLimit - spentToday
+            val sts = FinanceEngine.computeSafeToSpend(state)
+            val remaining = sts.safeToSpendToday
 
-            val title = if (remaining > 0) {
-                "Sisa Jatah Hari Ini: ${formatRp(remaining)}"
+            val title = if (remaining >= 0) {
+                "Safe to Spend Hari Ini: ${formatRp(remaining)}"
             } else {
-                "STOP! Jatah ${formatRp(state.dailyLimit)} Hari Ini Habis"
+                "Over Limit Hari Ini: ${formatRp(remaining)}"
             }
-            val sub = "Makan siang maks ${formatRp(state.lunchLimit)} • Malam wajib masak"
+            val sub = "Jatah harian ${formatRp(sts.dailyAllowance)} • Sisa ${sts.daysRemaining} hari siklus"
 
             val openIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

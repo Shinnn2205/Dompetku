@@ -12,21 +12,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -34,29 +27,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
+
+private enum class AppTab(val label: String, val icon: ImageVector) {
+    HOME("Beranda", Icons.Rounded.Home),
+    HISTORY("Riwayat", Icons.Rounded.ReceiptLong),
+    DREAMS("Impian", Icons.Rounded.AutoAwesome),
+    CONTROL("Kontrol", Icons.Rounded.CalendarMonth)
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -111,6 +105,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             var appState by remember { mutableStateOf(initialState) }
             var unlocked by remember { mutableStateOf(initialState.pin == null) }
+            var currentTab by remember { mutableStateOf(AppTab.HOME) }
+            var showQuickAdd by remember { mutableStateOf(false) }
+            var quickAddType by remember { mutableStateOf(TxType.EXPENSE) }
+            var quickAddGoalId by remember { mutableStateOf<String?>(null) }
+            var showSettings by remember { mutableStateOf(false) }
+
+            val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
 
             LaunchedEffect(appState.darkTheme) {
                 enableEdgeToEdge(
@@ -165,1598 +167,223 @@ class MainActivity : ComponentActivity() {
                             onUnlocked = { unlocked = true }
                         )
                     } else {
-                        DompetKuApp(
-                            state = appState,
-                            onUpdateState = ::updateState,
-                            onExportJson = {
-                                exportBackupFile(FinanceRepo.toJson(appState))
+                        Scaffold(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            snackbarHost = { SnackbarHost(snackbarHostState) },
+                            floatingActionButton = {
+                                FloatingActionButton(
+                                    onClick = {
+                                        quickAddType = TxType.EXPENSE
+                                        quickAddGoalId = null
+                                        showQuickAdd = true
+                                    },
+                                    shape = CircleShape,
+                                    containerColor = EmeraldPrimary,
+                                    contentColor = Color.White
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = "Catat Transaksi",
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             },
-                            onImportJson = {
-                                importJsonLauncher.launch("*/*")
-                            },
-                            onResetAll = {
-                                FinanceRepo.clearAll(this@MainActivity)
-                                val fresh = AppState(
-                                    darkTheme = appState.darkTheme,
-                                    dailyLimit = 20_000L,
-                                    lunchLimit = 17_000L,
-                                    goals = emptyList(),
-                                    bans = emptyList()
-                                )
-                                updateState(fresh)
-                                Toast.makeText(this, "Semua data dihapus bersih", Toast.LENGTH_SHORT).show()
+                            bottomBar = {
+                                NavigationBar(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    tonalElevation = 0.dp
+                                ) {
+                                    for (tab in AppTab.entries) {
+                                        val selected = currentTab == tab
+                                        NavigationBarItem(
+                                            selected = selected,
+                                            onClick = { currentTab = tab },
+                                            icon = {
+                                                Icon(
+                                                    imageVector = tab.icon,
+                                                    contentDescription = tab.label
+                                                )
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = tab.label,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                                )
+                                            },
+                                            colors = NavigationBarItemDefaults.colors(
+                                                selectedIconColor = EmeraldPrimary,
+                                                selectedTextColor = EmeraldPrimary,
+                                                indicatorColor = EmeraldSoft
+                                            )
+                                        )
+                                    }
+                                }
                             }
-                        )
+                        ) { innerPadding ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(innerPadding)
+                            ) {
+                                when (currentTab) {
+                                    AppTab.HOME -> HomeScreen(
+                                        state = appState,
+                                        onUpdateState = ::updateState,
+                                        onOpenQuickAdd = { type ->
+                                            quickAddType = type
+                                            quickAddGoalId = null
+                                            showQuickAdd = true
+                                        },
+                                        onOpenSettings = { showSettings = true },
+                                        onGoToHistory = { currentTab = AppTab.HISTORY }
+                                    )
+                                    AppTab.HISTORY -> HistoryScreen(
+                                        state = appState,
+                                        onUpdateState = ::updateState
+                                    )
+                                    AppTab.DREAMS -> DreamPotsScreen(
+                                        state = appState,
+                                        onUpdateState = ::updateState,
+                                        onTopUpGoal = { gId ->
+                                            quickAddType = TxType.SAVING
+                                            quickAddGoalId = gId
+                                            showQuickAdd = true
+                                        }
+                                    )
+                                    AppTab.CONTROL -> ControlScreen(
+                                        state = appState,
+                                        onUpdateState = ::updateState
+                                    )
+                                }
+                            }
+                        }
+
+                        if (showQuickAdd) {
+                            QuickAddSheet(
+                                state = appState,
+                                initialType = quickAddType,
+                                initialGoalId = quickAddGoalId,
+                                onDismiss = { showQuickAdd = false },
+                                onSave = { tx, goalId ->
+                                    val prevState = appState
+                                    val nextState = FinanceEngine.applyTransaction(appState, tx, goalId)
+                                    updateState(nextState)
+                                    showQuickAdd = false
+                                    scope.launch {
+                                        val res = snackbarHostState.showSnackbar(
+                                            message = "Tersimpan: ${tx.category} (${formatRp(tx.amount)})",
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                        if (res == SnackbarResult.ActionPerformed) {
+                                            updateState(prevState)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        if (showSettings) {
+                            SettingsDialog(
+                                state = appState,
+                                onDismiss = { showSettings = false },
+                                onUpdateState = ::updateState,
+                                onExportJson = { exportJsonFile(this@MainActivity, appState) },
+                                onImportJson = { importJsonLauncher.launch("application/json") },
+                                onResetAll = {
+                                    FinanceRepo.clearAll(this@MainActivity)
+                                    updateState(AppState())
+                                    showSettings = false
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun exportBackupFile(jsonContent: String) {
+    private fun exportJsonFile(context: Context, state: AppState) {
         try {
-            val dir = File(cacheDir, "backups").apply { mkdirs() }
-            val file = File(dir, "dompetku-backup-${todayISO()}.json")
-            file.writeText(jsonContent, Charsets.UTF_8)
-            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+            val file = File(dir, "dompetku_backup_$stamp.json")
+            file.writeText(FinanceRepo.toJson(state))
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/json"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(shareIntent, "Simpan atau Bagikan Cadangan"))
+            context.startActivity(Intent.createChooser(shareIntent, "Simpan Cadangan DompetKu"))
         } catch (_: Exception) {
-            Toast.makeText(this, "Gagal mengekspor data", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Gagal mengekspor cadangan", Toast.LENGTH_SHORT).show()
         }
     }
 }
 
 @Composable
 fun PinLockScreen(expectedPin: String, onUnlocked: () -> Unit) {
-    var entered by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(28.dp),
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Rounded.Lock,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(44.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(58.dp)
+                .clip(CircleShape)
+                .background(EmeraldSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.Lock, contentDescription = null, tint = EmeraldPrimary, modifier = Modifier.size(28.dp))
+        }
+        Spacer(Modifier.height(16.dp))
+        Text("Masukkan PIN DompetKu", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
         Spacer(Modifier.height(12.dp))
-        Text("Masukkan PIN DompetKu", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(4.dp))
-        Text("Lindungi catatan keuanganmu", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(24.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            repeat(4) { idx ->
-                val filled = idx < entered.length
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (i in 0 until 4) {
                 Box(
                     modifier = Modifier
                         .size(14.dp)
                         .clip(CircleShape)
                         .background(
-                            if (filled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outline
-                        )
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(16.dp))
-
-        val rows = listOf(
-            listOf("1", "2", "3"),
-            listOf("4", "5", "6"),
-            listOf("7", "8", "9"),
-            listOf("C", "0", "⌫")
-        )
-        rows.forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.padding(vertical = 6.dp)
-            ) {
-                row.forEach { key ->
-                    FilledTonalButton(
-                        onClick = {
-                            when (key) {
-                                "C" -> { entered = ""; error = "" }
-                                "⌫" -> if (entered.isNotEmpty()) entered = entered.dropLast(1)
-                                else -> if (entered.length < 4) {
-                                    entered += key
-                                    if (entered.length == 4) {
-                                        if (entered == expectedPin) {
-                                            onUnlocked()
-                                        } else {
-                                            error = "PIN salah, coba lagi"
-                                            entered = ""
-                                        }
-                                    }
-                                }
+                            when {
+                                error -> DangerRed
+                                i < input.length -> EmeraldPrimary
+                                else -> MaterialTheme.colorScheme.outline
                             }
-                        },
-                        modifier = Modifier.size(72.dp, 56.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(key, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
+                        )
+                )
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DompetKuApp(
-    state: AppState,
-    onUpdateState: (AppState) -> Unit,
-    onExportJson: () -> Unit,
-    onImportJson: () -> Unit,
-    onResetAll: () -> Unit
-) {
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    var currentTab by remember { mutableIntStateOf(0) }
-    var showAddTxSheet by remember { mutableStateOf(false) }
-    var editingTx by remember { mutableStateOf<TxItem?>(null) }
-    var addTxInitialType by remember { mutableStateOf(TxType.EXPENSE) }
-    var showAdjustBalance by remember { mutableStateOf(false) }
-    var showSettingsSheet by remember { mutableStateOf(false) }
-
-    // Pending transaction blocked by strict daily limit or ban
-    var blockedTxPrompt by remember { mutableStateOf<Pair<TxItem, String>?>(null) }
-
-    val today = todayISO()
-    val todaySpent = state.transactions
-        .filter { it.type == TxType.EXPENSE && it.date == today }
-        .sumOf { it.amount }
-    val balance = state.transactions.sumOf { if (it.type == TxType.INCOME) it.amount else -it.amount }
-
-    fun handleTrySaveTx(tx: TxItem) {
-        val isEdit = state.transactions.any { it.id == tx.id }
-        if (!isEdit && tx.type == TxType.EXPENSE) {
-            val reasons = mutableListOf<String>()
-            if (state.dailyLimit > 0 && tx.date == today && todaySpent + tx.amount > state.dailyLimit) {
-                reasons.add("Pengeluaran hari ini akan melebihi batas maksimal ${formatRp(state.dailyLimit)}.")
-            }
-            for (ban in state.bans.filter { it.active }) {
-                val text = "${tx.note} ${tx.category}".lowercase()
-                val matches = (ban.category.isNotEmpty() && tx.category == ban.category) ||
-                    ban.keywords.any { it.isNotBlank() && it.lowercase() in text }
-                if (matches) {
-                    if (ban.dailyMax == 0L) {
-                        reasons.add("Melanggar larangan: \"${ban.name}\".")
-                    } else {
-                        val banSpentToday = state.transactions
-                            .filter { t ->
-                                t.type == TxType.EXPENSE && t.date == tx.date && (
-                                    (ban.category.isNotEmpty() && t.category == ban.category) ||
-                                        ban.keywords.any { kw -> kw.isNotBlank() && kw.lowercase() in "${t.note} ${t.category}".lowercase() }
-                                )
-                            }
-                            .sumOf { it.amount }
-                        if (banSpentToday + tx.amount > ban.dailyMax) {
-                            reasons.add("Melebihi batas \"${ban.name}\" (${formatRp(ban.dailyMax)}/hari).")
+        Spacer(Modifier.height(28.dp))
+        CustomNumpad(
+            onDigit = { d ->
+                error = false
+                if (input.length < 4) {
+                    val next = input + d
+                    input = next
+                    if (next.length == 4) {
+                        if (next == expectedPin) onUnlocked()
+                        else {
+                            error = true
+                            input = ""
                         }
-                    }
-                }
-            }
-            if (reasons.isNotEmpty()) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                blockedTxPrompt = tx to reasons.joinToString("\n")
-                return
-            }
-        }
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val newList = if (isEdit) {
-            state.transactions.map { if (it.id == tx.id) tx else it }
-        } else {
-            state.transactions + tx
-        }
-        onUpdateState(state.copy(transactions = newList))
-        showAddTxSheet = false
-        editingTx = null
-        Toast.makeText(context, if (isEdit) "Transaksi diperbarui" else "Transaksi disimpan", Toast.LENGTH_SHORT).show()
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("DompetKu", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                        Text(
-                            SimpleDateFormat("EEEE, d MMM yyyy", Locale("id", "ID")).format(Date()),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onUpdateState(state.copy(hideBalance = !state.hideBalance)) }) {
-                        Icon(
-                            if (state.hideBalance) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                            contentDescription = "Mode Privasi"
-                        )
-                    }
-                    IconButton(onClick = { onUpdateState(state.copy(darkTheme = !state.darkTheme)) }) {
-                        Icon(
-                            if (state.darkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                            contentDescription = "Tema"
-                        )
-                    }
-                    IconButton(onClick = { showSettingsSheet = true }) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "Pengaturan")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp
-            ) {
-                val items = listOf(
-                    Triple(0, "Beranda", Icons.Rounded.Home),
-                    Triple(1, "Riwayat", Icons.Rounded.ReceiptLong),
-                    Triple(2, "Target", Icons.Rounded.Savings),
-                    Triple(3, "Kontrol", Icons.Rounded.Shield)
-                )
-                items.forEach { (idx, label, icon) ->
-                    NavigationBarItem(
-                        selected = currentTab == idx,
-                        onClick = { currentTab = idx },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                        )
-                    )
-                }
-            }
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    addTxInitialType = TxType.EXPENSE
-                    showAddTxSheet = true
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = "Catat Transaksi")
-            }
-        }
-    ) { padding ->
-        AnimatedContent(
-            targetState = currentTab,
-            modifier = Modifier.padding(padding).fillMaxSize(),
-            label = "tab_transition"
-        ) { tab ->
-            when (tab) {
-                0 -> HomeScreen(
-                    state = state,
-                    balance = balance,
-                    todaySpent = todaySpent,
-                    onQuickAdd = { type ->
-                        editingTx = null
-                        addTxInitialType = type
-                        showAddTxSheet = true
-                    },
-                    onAdjustBalance = { showAdjustBalance = true },
-                    onCookToday = {
-                        if (today !in state.cookDays) {
-                            onUpdateState(
-                                state.copy(
-                                    cookDays = state.cookDays + today,
-                                    cookSavedTotal = state.cookSavedTotal + 25_000L
-                                )
-                            )
-                            Toast.makeText(context, "Mantap! Hemat Rp 25.000 hari ini", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onSaveLeftover = { amount ->
-                        val goal = state.goals.firstOrNull() ?: return@HomeScreen
-                        val updatedGoals = state.goals.map {
-                            if (it.id == goal.id) it.copy(saved = it.saved + amount) else it
-                        }
-                        val tx = TxItem(
-                            id = UUID.randomUUID().toString(),
-                            type = TxType.SAVING,
-                            amount = amount,
-                            category = "Tabungan",
-                            note = "Sisa jatah harian ke ${goal.name}",
-                            date = today,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        onUpdateState(state.copy(goals = updatedGoals, transactions = state.transactions + tx))
-                        Toast.makeText(context, "Sisa ${formatRp(amount)} ditabung!", Toast.LENGTH_SHORT).show()
-                    },
-                    onOpenTab = { currentTab = it }
-                )
-                1 -> HistoryScreen(
-                    state = state,
-                    onEditTx = { tx ->
-                        editingTx = tx
-                        addTxInitialType = tx.type
-                        showAddTxSheet = true
-                    },
-                    onDeleteTx = { id ->
-                        onUpdateState(state.copy(transactions = state.transactions.filterNot { it.id == id }))
-                    }
-                )
-                2 -> GoalsScreen(
-                    state = state,
-                    onAddGoal = { name, target ->
-                        val g = SavingsGoal(UUID.randomUUID().toString(), name, target, 0L)
-                        onUpdateState(state.copy(goals = state.goals + g))
-                    },
-                    onEditGoal = { id, name, target ->
-                        onUpdateState(
-                            state.copy(goals = state.goals.map { if (it.id == id) it.copy(name = name, target = target) else it })
-                        )
-                    },
-                    onDeposit = { goalId, amount, deduct ->
-                        val goal = state.goals.firstOrNull { it.id == goalId } ?: return@GoalsScreen
-                        val updatedGoals = state.goals.map {
-                            if (it.id == goalId) it.copy(saved = it.saved + amount) else it
-                        }
-                        val newTxs = if (deduct) {
-                            state.transactions + TxItem(
-                                id = UUID.randomUUID().toString(),
-                                type = TxType.SAVING,
-                                amount = amount,
-                                category = "Tabungan",
-                                note = "Setor ke ${goal.name}",
-                                date = today,
-                                createdAt = System.currentTimeMillis()
-                            )
-                        } else state.transactions
-                        onUpdateState(state.copy(goals = updatedGoals, transactions = newTxs))
-                        Toast.makeText(context, "Berhasil menabung ${formatRp(amount)}", Toast.LENGTH_SHORT).show()
-                    },
-                    onDeleteGoal = { id ->
-                        onUpdateState(state.copy(goals = state.goals.filterNot { it.id == id }))
-                    }
-                )
-                3 -> ControlScreen(
-                    state = state,
-                    onSaveLimits = { daily, lunch, strict ->
-                        onUpdateState(state.copy(dailyLimit = daily, lunchLimit = lunch, strictLock = strict))
-                        Toast.makeText(context, "Batas harian diperbarui", Toast.LENGTH_SHORT).show()
-                    },
-                    onAddBan = { name, keywords, category, dailyMax ->
-                        val b = SpendingBan(
-                            id = UUID.randomUUID().toString(),
-                            name = name,
-                            keywords = keywords,
-                            category = category,
-                            dailyMax = dailyMax,
-                            active = true,
-                            createdAt = today,
-                            lastBrokenDate = null
-                        )
-                        onUpdateState(state.copy(bans = state.bans + b))
-                    },
-                    onToggleBan = { id ->
-                        onUpdateState(
-                            state.copy(bans = state.bans.map { if (it.id == id) it.copy(active = !it.active) else it })
-                        )
-                    },
-                    onDeleteBan = { id ->
-                        onUpdateState(state.copy(bans = state.bans.filterNot { it.id == id }))
-                    }
-                )
-            }
-        }
-    }
-
-    if (showAddTxSheet) {
-        AddTransactionSheet(
-            initialType = addTxInitialType,
-            editingTx = editingTx,
-            onDismiss = { showAddTxSheet = false; editingTx = null },
-            onSave = ::handleTrySaveTx
-        )
-    }
-
-    if (showAdjustBalance) {
-        var newBalStr by remember { mutableStateOf(balance.coerceAtLeast(0L).toString()) }
-        AlertDialog(
-            onDismissRequest = { showAdjustBalance = false },
-            title = { Text("Atur Saldo Awal / Saat Ini") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Masukkan total uang yang kamu pegang sekarang (tunai / e-wallet) agar saldo akurat.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = newBalStr,
-                        onValueChange = { newBalStr = it.filter(Char::isDigit) },
-                        label = { Text("Saldo Sekarang (Rp)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
-                    newBalStr.toLongOrNull()?.let { v ->
-                        Text("= ${formatRp(v)}", color = EmeraldPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     }
                 }
             },
-            confirmButton = {
-                Button(onClick = {
-                    val targetBal = newBalStr.toLongOrNull() ?: return@Button
-                    val diff = targetBal - balance
-                    if (diff != 0L) {
-                        val adjTx = TxItem(
-                            id = UUID.randomUUID().toString(),
-                            type = if (diff > 0) TxType.INCOME else TxType.EXPENSE,
-                            amount = kotlin.math.abs(diff),
-                            category = "Penyesuaian Saldo",
-                            note = "Atur saldo awal",
-                            date = today,
-                            createdAt = System.currentTimeMillis()
-                        )
-                        onUpdateState(state.copy(transactions = state.transactions + adjTx))
-                    }
-                    showAdjustBalance = false
-                    Toast.makeText(context, "Saldo disesuaikan", Toast.LENGTH_SHORT).show()
-                }) { Text("Simpan") }
-            },
-            dismissButton = { TextButton(onClick = { showAdjustBalance = false }) { Text("Batal") } }
-        )
-    }
-
-    if (showSettingsSheet) {
-        SettingsDialog(
-            state = state,
-            onDismiss = { showSettingsSheet = false },
-            onUpdateState = onUpdateState,
-            onExportJson = onExportJson,
-            onImportJson = onImportJson,
-            onClearTx = {
-                onUpdateState(state.copy(transactions = emptyList()))
-                Toast.makeText(context, "Riwayat transaksi dihapus", Toast.LENGTH_SHORT).show()
-            },
-            onResetAll = {
-                showSettingsSheet = false
-                onResetAll()
+            onTripleZero = {},
+            onBackspace = {
+                if (input.isNotEmpty()) input = input.dropLast(1)
             }
         )
-    }
-
-    blockedTxPrompt?.let { (tx, reason) ->
-        AlertDialog(
-            onDismissRequest = { blockedTxPrompt = null },
-            icon = { Icon(Icons.Rounded.Warning, contentDescription = null, tint = DangerRed) },
-            title = { Text("Tahan Pengeluaran Ini!", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(reason)
-                    if (state.strictLock) {
-                        Text(
-                            "Mode Kunci Ketat aktif. Lebih baik batalkan dan alihkan ${formatRp(tx.amount)} ke target tabunganmu.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val goal = state.goals.firstOrNull()
-                        if (goal != null) {
-                            val updatedGoals = state.goals.map {
-                                if (it.id == goal.id) it.copy(saved = it.saved + tx.amount) else it
-                            }
-                            val saveTx = tx.copy(
-                                type = TxType.SAVING,
-                                category = "Tabungan",
-                                note = "Dialihkan dari jajan ke ${goal.name}"
-                            )
-                            onUpdateState(state.copy(goals = updatedGoals, transactions = state.transactions + saveTx))
-                            Toast.makeText(context, "${formatRp(tx.amount)} dialihkan ke ${goal.name}", Toast.LENGTH_SHORT).show()
-                        }
-                        blockedTxPrompt = null
-                        showAddTxSheet = false
-                    }
-                ) {
-                    Text("Batal & Tabungkan")
-                }
-            },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { blockedTxPrompt = null; showAddTxSheet = false }) {
-                        Text("Batal")
-                    }
-                    if (!state.strictLock) {
-                        TextButton(
-                            onClick = {
-                                onUpdateState(state.copy(transactions = state.transactions + tx))
-                                blockedTxPrompt = null
-                                showAddTxSheet = false
-                            }
-                        ) {
-                            Text("Tetap Catat", color = DangerRed)
-                        }
-                    }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun CircleActionBtn(
-    icon: ImageVector,
-    label: String,
-    tint: Color = MaterialTheme.colorScheme.primary,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(
-                    if (enabled) MaterialTheme.colorScheme.surface
-                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (enabled) tint else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-fun HomeScreen(
-    state: AppState,
-    balance: Long,
-    todaySpent: Long,
-    onQuickAdd: (TxType) -> Unit,
-    onAdjustBalance: () -> Unit,
-    onCookToday: () -> Unit,
-    onSaveLeftover: (Long) -> Unit,
-    onOpenTab: (Int) -> Unit
-) {
-    val today = todayISO()
-    val monthPrefix = today.take(7)
-    val monthIncome = state.transactions.filter { it.type == TxType.INCOME && it.date.startsWith(monthPrefix) }.sumOf { it.amount }
-    val monthExpense = state.transactions.filter { it.type == TxType.EXPENSE && it.date.startsWith(monthPrefix) }.sumOf { it.amount }
-
-    val dailyLimit = state.dailyLimit
-    val remainingToday = (dailyLimit - todaySpent).coerceAtLeast(0L)
-    val overLimit = dailyLimit > 0 && todaySpent > dailyLimit
-    val rawProgress = if (dailyLimit > 0) (todaySpent.toFloat() / dailyLimit.toFloat()).coerceIn(0f, 1f) else 0f
-    val animProgress by animateFloatAsState(targetValue = rawProgress, animationSpec = tween(500), label = "daily_prog")
-
-    val cookedToday = today in state.cookDays
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // 1. OPEN HERO BALANCE + DAILY BUDGET GAUGE
-        item {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Saldo Dompet (ketuk untuk atur)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.clickable { onAdjustBalance() }
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        Text(
-                            "+${formatRp(monthIncome, state.hideBalance)}  •  -${formatRp(monthExpense, state.hideBalance)}",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    formatRp(balance, state.hideBalance),
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-1).sp
-                )
-            }
-        }
-
-        // 2. 4 CIRCULAR QUICK ACTIONS
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                CircleActionBtn(
-                    icon = Icons.Rounded.ArrowDownward,
-                    label = "Masuk",
-                    tint = EmeraldPrimary,
-                    onClick = { onQuickAdd(TxType.INCOME) }
-                )
-                CircleActionBtn(
-                    icon = Icons.Rounded.ArrowUpward,
-                    label = "Keluar",
-                    tint = DangerRed,
-                    onClick = { onQuickAdd(TxType.EXPENSE) }
-                )
-                CircleActionBtn(
-                    icon = if (cookedToday) Icons.Rounded.CheckCircle else Icons.Rounded.Restaurant,
-                    label = if (cookedToday) "Sudah Masak" else "Masak",
-                    tint = if (cookedToday) EmeraldPrimary else WarnAmber,
-                    enabled = !cookedToday,
-                    onClick = onCookToday
-                )
-                CircleActionBtn(
-                    icon = Icons.Rounded.Savings,
-                    label = "Tabung",
-                    tint = InfoBlue,
-                    onClick = { onOpenTab(2) }
-                )
-            }
-        }
-
-        // 3. DAILY BUDGET CARD (BORDERLESS ELEVATED)
-        item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = if (overLimit) Color(0xFF281216) else MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                "Sisa Jatah Hari Ini",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                if (dailyLimit > 0) formatRp(remainingToday, state.hideBalance) else "Belum diatur",
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (overLimit) DangerRed else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = if (overLimit) DangerRed.copy(alpha = 0.16f) else MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                if (overLimit) "Habis" else "Maks ${formatRp(dailyLimit)}",
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (overLimit) DangerRed else MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-                    LinearProgressIndicator(
-                        progress = { animProgress },
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(999.dp)),
-                        color = if (overLimit) DangerRed else if (animProgress >= 0.8f) WarnAmber else EmeraldPrimary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Terpakai ${formatRp(todaySpent, state.hideBalance)} • Siang maks ${formatRp(state.lunchLimit)} • Malam masak",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    if (dailyLimit > 0 && remainingToday > 0 && state.goals.isNotEmpty()) {
-                        Spacer(Modifier.height(14.dp))
-                        FilledTonalButton(
-                            onClick = { onSaveLeftover(remainingToday) },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Text("Amankan Sisa ${formatRp(remainingToday)} ke Tabungan", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. 7-DAY SPENDING CHART (CANVAS)
-        item {
-            val days = remember(state.transactions) {
-                (6 downTo 0).map { ago ->
-                    val iso = offsetDateISO(ago)
-                    val total = state.transactions.filter { it.type == TxType.EXPENSE && it.date == iso }.sumOf { it.amount }
-                    val lbl = if (ago == 0) "Ini" else SimpleDateFormat("EE", Locale("id", "ID")).format(Date(System.currentTimeMillis() - ago * 86_400_000L)).take(2)
-                    Triple(lbl, total, ago == 0)
-                }
-            }
-            val weekSum = days.sumOf { it.second }
-            val maxVal = days.maxOfOrNull { it.second }?.coerceAtLeast(1L) ?: 1L
-            val barPrimary = MaterialTheme.colorScheme.primary
-            val barTrack = MaterialTheme.colorScheme.surfaceVariant
-
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Pengeluaran 7 Hari", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        Text(
-                            formatRp(weekSum, state.hideBalance),
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Canvas(modifier = Modifier.fillMaxWidth().height(84.dp)) {
-                        val slotW = size.width / 7f
-                        val barW = slotW * 0.44f
-                        days.forEachIndexed { idx, (_, amt, isToday) ->
-                            val frac = (amt.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
-                            val h = (size.height * frac).coerceAtLeast(8f)
-                            val x = idx * slotW + (slotW - barW) / 2f
-                            drawRoundRect(
-                                color = if (amt == 0L) barTrack else if (isToday) barPrimary else barPrimary.copy(alpha = 0.55f),
-                                topLeft = Offset(x, size.height - h),
-                                size = Size(barW, h),
-                                cornerRadius = CornerRadius(12f, 12f)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        days.forEach { (lbl, _, isToday) ->
-                            Text(
-                                lbl,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                fontSize = 11.sp,
-                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isToday) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 5. PRIMARY SAVINGS GOAL
-        item {
-            val goal = state.goals.firstOrNull()
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Target Utama", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        TextButton(onClick = { onOpenTab(2) }) { Text("Semua Target") }
-                    }
-                    if (goal == null) {
-                        Text(
-                            "Belum ada target tabungan. Buat di tab Target.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        val rawGoalProg = (goal.saved.toFloat() / goal.target.coerceAtLeast(1L)).coerceIn(0f, 1f)
-                        val animGoalProg by animateFloatAsState(targetValue = rawGoalProg, animationSpec = tween(500), label = "goal_prog")
-                        val pct = (rawGoalProg * 100).toInt()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(goal.name, fontWeight = FontWeight.Medium)
-                            Text("$pct%", fontWeight = FontWeight.Bold, color = EmeraldPrimary)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { animGoalProg },
-                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(999.dp)),
-                            color = EmeraldPrimary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "${formatRp(goal.saved, state.hideBalance)} dari ${formatRp(goal.target)} • Hemat masak: ${formatRp(state.cookSavedTotal, state.hideBalance)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        // 6. CATEGORY BREAKDOWN (MONTH)
-        val monthExpensesByCat = state.transactions
-            .filter { it.type == TxType.EXPENSE && it.date.startsWith(monthPrefix) }
-            .groupBy { it.category }
-            .mapValues { (_, list) -> list.sumOf { it.amount } }
-            .entries
-            .sortedByDescending { it.value }
-            .take(4)
-
-        if (monthExpensesByCat.isNotEmpty()) {
-            item {
-                val totalMonth = monthExpensesByCat.sumOf { it.value }.coerceAtLeast(1L)
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Pengeluaran Bulan Ini", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        monthExpensesByCat.forEach { (cat, amt) ->
-                            val frac = (amt.toFloat() / totalMonth.toFloat()).coerceIn(0f, 1f)
-                            val pct = (frac * 100).toInt()
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(cat, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${formatRp(amt, state.hideBalance)} ($pct%)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                }
-                                LinearProgressIndicator(
-                                    progress = { frac },
-                                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(999.dp)),
-                                    color = EmeraldPrimary,
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 7. RECENT ACTIVITY
-        item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Aktivitas Terakhir", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        TextButton(onClick = { onOpenTab(1) }) { Text("Semua") }
-                    }
-                    val recent = state.transactions.sortedByDescending { it.createdAt }.take(5)
-                    if (recent.isEmpty()) {
-                        Text(
-                            "Belum ada transaksi. Ketuk + untuk mencatat.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    } else {
-                        recent.forEachIndexed { idx, tx ->
-                            TxRow(tx = tx, masked = state.hideBalance, onDelete = null)
-                            if (idx < recent.lastIndex) {
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fun formatDateHuman(iso: String): String {
-    if (iso == todayISO()) return "Hari Ini"
-    if (iso == offsetDateISO(1)) return "Kemarin"
-    return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val d = sdf.parse(iso) ?: return iso
-        SimpleDateFormat("EEE, d MMM", Locale("id", "ID")).format(d)
-    } catch (_: Exception) {
-        iso
-    }
-}
-
-@Composable
-fun TxRow(tx: TxItem, masked: Boolean, onClick: (() -> Unit)? = null, onDelete: (() -> Unit)?) {
-    val icon = when (tx.type) {
-        TxType.INCOME -> Icons.Rounded.ArrowDownward
-        TxType.EXPENSE -> Icons.Rounded.ArrowUpward
-        TxType.SAVING -> Icons.Rounded.Savings
-    }
-    val tint = when (tx.type) {
-        TxType.INCOME -> EmeraldPrimary
-        TxType.EXPENSE -> MaterialTheme.colorScheme.onSurface
-        TxType.SAVING -> InfoBlue
-    }
-    val sign = if (tx.type == TxType.INCOME) "+" else "-"
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                tx.note.ifBlank { tx.category },
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                "${tx.category} • ${formatDateHuman(tx.date)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(
-            "$sign${formatRp(tx.amount, masked)}",
-            fontWeight = FontWeight.SemiBold,
-            color = tint
-        )
-        if (onDelete != null) {
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Rounded.DeleteOutline, contentDescription = "Hapus", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
-fun HistoryScreen(
-    state: AppState,
-    onEditTx: (TxItem) -> Unit,
-    onDeleteTx: (String) -> Unit
-) {
-    var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf<TxType?>(null) }
-
-    val filtered = state.transactions
-        .filter { tx ->
-            (filter == null || tx.type == filter) &&
-                (query.isBlank() || tx.note.contains(query, true) || tx.category.contains(query, true))
-        }
-        .sortedWith(compareByDescending<TxItem> { it.date }.thenByDescending { it.createdAt })
-
-    val grouped = filtered.groupBy { it.date }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Cari catatan atau kategori...") },
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        item {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState())
-            ) {
-                FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("Semua") })
-                FilterChip(selected = filter == TxType.INCOME, onClick = { filter = TxType.INCOME }, label = { Text("Masuk") })
-                FilterChip(selected = filter == TxType.EXPENSE, onClick = { filter = TxType.EXPENSE }, label = { Text("Keluar") })
-                FilterChip(selected = filter == TxType.SAVING, onClick = { filter = TxType.SAVING }, label = { Text("Tabungan") })
-            }
-        }
-        if (grouped.isEmpty()) {
-            item {
-                Text(
-                    "Belum ada transaksi yang cocok.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp)
-                )
-            }
-        } else {
-            grouped.forEach { (date, dayItems) ->
-                val dayOut = dayItems.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
-                item(key = "hdr_$date") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            formatDateHuman(date),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (dayOut > 0) {
-                            Text(
-                                "Keluar ${formatRp(dayOut, state.hideBalance)}",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-                item(key = "card_$date") {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            dayItems.forEachIndexed { idx, tx ->
-                                TxRow(
-                                    tx = tx,
-                                    masked = state.hideBalance,
-                                    onClick = { onEditTx(tx) },
-                                    onDelete = { onDeleteTx(tx.id) }
-                                )
-                                if (idx < dayItems.lastIndex) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun GoalsScreen(
-    state: AppState,
-    onAddGoal: (String, Long) -> Unit,
-    onEditGoal: (String, String, Long) -> Unit,
-    onDeposit: (String, Long, Boolean) -> Unit,
-    onDeleteGoal: (String) -> Unit
-) {
-    var showNewGoal by remember { mutableStateOf(false) }
-    var editingGoal by remember { mutableStateOf<SavingsGoal?>(null) }
-    var depositGoal by remember { mutableStateOf<SavingsGoal?>(null) }
-
-    val totalSaved = state.goals.sumOf { it.saved }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 92.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Total Tabungan", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatRp(totalSaved, state.hideBalance), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EmeraldPrimary)
-                    }
-                    Button(onClick = { showNewGoal = true }, shape = RoundedCornerShape(14.dp)) {
-                        Text("+ Target")
-                    }
-                }
-            }
-        }
-
-        items(state.goals, key = { it.id }) { g ->
-            val rawGoalProg = (g.saved.toFloat() / g.target.coerceAtLeast(1L)).coerceIn(0f, 1f)
-            val animProg by animateFloatAsState(targetValue = rawGoalProg, animationSpec = tween(500), label = "g_prog")
-            val pct = (rawGoalProg * 100).toInt()
-            val kurang = (g.target - g.saved).coerceAtLeast(0L)
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(g.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                        Text("$pct%", fontWeight = FontWeight.Bold, color = EmeraldPrimary)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    LinearProgressIndicator(
-                        progress = { animProg },
-                        modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(999.dp)),
-                        color = EmeraldPrimary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatRp(g.saved, state.hideBalance), fontWeight = FontWeight.Medium)
-                        Text(
-                            if (kurang == 0L) "Target Tercapai!" else "Kurang ${formatRp(kurang, state.hideBalance)}",
-                            color = if (kurang == 0L) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { depositGoal = g }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                            Text("Nabung")
-                        }
-                        OutlinedButton(onClick = { editingGoal = g }, shape = RoundedCornerShape(12.dp)) {
-                            Text("Ubah")
-                        }
-                        OutlinedButton(onClick = { onDeleteGoal(g.id) }, shape = RoundedCornerShape(12.dp)) {
-                            Text("Hapus")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showNewGoal) {
-        var name by remember { mutableStateOf("") }
-        var targetStr by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showNewGoal = false },
-            title = { Text("Target Tabungan Baru") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nama Target") }, singleLine = true)
-                    OutlinedTextField(
-                        value = targetStr,
-                        onValueChange = { targetStr = it.filter(Char::isDigit) },
-                        label = { Text("Nominal Target (Rp)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val t = targetStr.toLongOrNull() ?: 0L
-                    if (name.isNotBlank() && t > 0) {
-                        onAddGoal(name.trim(), t)
-                        showNewGoal = false
-                    }
-                }) { Text("Simpan") }
-            },
-            dismissButton = { TextButton(onClick = { showNewGoal = false }) { Text("Batal") } }
-        )
-    }
-
-    if (editingGoal != null) {
-        val g = editingGoal!!
-        var name by remember(g.id) { mutableStateOf(g.name) }
-        var targetStr by remember(g.id) { mutableStateOf(g.target.toString()) }
-        AlertDialog(
-            onDismissRequest = { editingGoal = null },
-            title = { Text("Ubah Target Tabungan") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nama Target") }, singleLine = true)
-                    OutlinedTextField(
-                        value = targetStr,
-                        onValueChange = { targetStr = it.filter(Char::isDigit) },
-                        label = { Text("Nominal Target (Rp)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
-                    targetStr.toLongOrNull()?.let { v ->
-                        Text("= ${formatRp(v)}", color = EmeraldPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val t = targetStr.toLongOrNull() ?: 0L
-                    if (name.isNotBlank() && t > 0) {
-                        onEditGoal(g.id, name.trim(), t)
-                        editingGoal = null
-                    }
-                }) { Text("Simpan") }
-            },
-            dismissButton = { TextButton(onClick = { editingGoal = null }) { Text("Batal") } }
-        )
-    }
-
-    depositGoal?.let { g ->
-        var amtStr by remember { mutableStateOf("") }
-        var deduct by remember { mutableStateOf(true) }
-        AlertDialog(
-            onDismissRequest = { depositGoal = null },
-            title = { Text("Nabung: ${g.name}") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = amtStr,
-                        onValueChange = { amtStr = it.filter(Char::isDigit) },
-                        label = { Text("Jumlah Setoran (Rp)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                        listOf(10_000L to "+10rb", 20_000L to "+20rb", 50_000L to "+50rb", 100_000L to "+100rb").forEach { (v, lbl) ->
-                            SuggestionChip(
-                                onClick = { amtStr = ((amtStr.toLongOrNull() ?: 0L) + v).toString() },
-                                label = { Text(lbl, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { deduct = !deduct }) {
-                        Checkbox(checked = deduct, onCheckedChange = { deduct = it })
-                        Text("Potong dari saldo utama", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val a = amtStr.toLongOrNull() ?: 0L
-                    if (a > 0) {
-                        onDeposit(g.id, a, deduct)
-                        depositGoal = null
-                    }
-                }) { Text("Setor") }
-            },
-            dismissButton = { TextButton(onClick = { depositGoal = null }) { Text("Batal") } }
-        )
-    }
-}
-
-@Composable
-fun ControlScreen(
-    state: AppState,
-    onSaveLimits: (Long, Long, Boolean) -> Unit,
-    onAddBan: (String, List<String>, String, Long) -> Unit,
-    onToggleBan: (String) -> Unit,
-    onDeleteBan: (String) -> Unit
-) {
-    var dailyStr by remember(state.dailyLimit) { mutableStateOf(state.dailyLimit.toString()) }
-    var lunchStr by remember(state.lunchLimit) { mutableStateOf(state.lunchLimit.toString()) }
-    var strict by remember(state.strictLock) { mutableStateOf(state.strictLock) }
-    var showNewBan by remember { mutableStateOf(false) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 92.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Kontrol Pengeluaran Harian", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = dailyStr,
-                            onValueChange = { dailyStr = it.filter(Char::isDigit) },
-                            label = { Text("Maks Harian (Rp)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = lunchStr,
-                            onValueChange = { lunchStr = it.filter(Char::isDigit) },
-                            label = { Text("Maks Siang (Rp)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Mode Kunci Ketat", fontWeight = FontWeight.Medium)
-                            Text(
-                                "Blokir pencatatan pengeluaran jika melewati batas harian/larangan",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(checked = strict, onCheckedChange = { strict = it })
-                    }
-                    Button(
-                        onClick = {
-                            onSaveLimits(
-                                dailyStr.toLongOrNull() ?: 0L,
-                                lunchStr.toLongOrNull() ?: 0L,
-                                strict
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Simpan Aturan Batas")
-                    }
-                }
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Daftar Larangan Jajan", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                TextButton(onClick = { showNewBan = true }) { Text("+ Larangan") }
-            }
-        }
-
-        items(state.bans, key = { it.id }) { b ->
-            val streak = daysBetweenISO(b.lastBrokenDate ?: b.createdAt, todayISO())
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(b.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Switch(checked = b.active, onCheckedChange = { onToggleBan(b.id) })
-                    }
-                    Text(
-                        if (b.dailyMax == 0L) "Blokir Total • Streak $streak hari"
-                        else "Maks ${formatRp(b.dailyMax)}/hari • Streak $streak hari",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = EmeraldPrimary
-                    )
-                    if (b.keywords.isNotEmpty()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Kata kunci: ${b.keywords.joinToString(", ")}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = { onDeleteBan(b.id) }, contentPadding = PaddingValues(0.dp)) {
-                        Text("Hapus Larangan", color = DangerRed)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showNewBan) {
-        var name by remember { mutableStateOf("") }
-        var kws by remember { mutableStateOf("") }
-        var maxStr by remember { mutableStateOf("0") }
-        AlertDialog(
-            onDismissRequest = { showNewBan = false },
-            title = { Text("Tambah Larangan Jajan") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nama Larangan") }, singleLine = true)
-                    OutlinedTextField(value = kws, onValueChange = { kws = it }, label = { Text("Kata kunci (pisahkan koma)") }, singleLine = true)
-                    OutlinedTextField(
-                        value = maxStr,
-                        onValueChange = { maxStr = it.filter(Char::isDigit) },
-                        label = { Text("Maks/hari (0 = blokir total)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (name.isNotBlank()) {
-                        onAddBan(
-                            name.trim(),
-                            kws.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                            "",
-                            maxStr.toLongOrNull() ?: 0L
-                        )
-                        showNewBan = false
-                    }
-                }) { Text("Aktifkan") }
-            },
-            dismissButton = { TextButton(onClick = { showNewBan = false }) { Text("Batal") } }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddTransactionSheet(
-    initialType: TxType,
-    editingTx: TxItem? = null,
-    onDismiss: () -> Unit,
-    onSave: (TxItem) -> Unit
-) {
-    var type by remember(editingTx) { mutableStateOf(editingTx?.type ?: initialType) }
-    var amountStr by remember(editingTx) { mutableStateOf(editingTx?.amount?.toString() ?: "") }
-    var category by remember(editingTx) {
-        mutableStateOf(
-            editingTx?.category ?: if (initialType == TxType.INCOME) "Gaji / Uang Saku" else "Makan & Minum"
-        )
-    }
-    var note by remember(editingTx) { mutableStateOf(editingTx?.note ?: "") }
-    var selectedDate by remember(editingTx) { mutableStateOf(editingTx?.date ?: todayISO()) }
-
-    val categories = if (type == TxType.INCOME) {
-        listOf("Gaji / Uang Saku", "Bonus / Hadiah", "Freelance", "Lainnya")
-    } else {
-        listOf("Makan & Minum", "Jajan & Minuman", "Transportasi", "Belanja Online", "Tagihan & Pulsa", "Lainnya")
-    }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                if (editingTx != null) "Ubah Transaksi" else "Catat Transaksi",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            if (type != TxType.SAVING) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = type == TxType.EXPENSE,
-                        onClick = { type = TxType.EXPENSE; category = "Makan & Minum" },
-                        label = { Text("Pengeluaran") }
-                    )
-                    FilterChip(
-                        selected = type == TxType.INCOME,
-                        onClick = { type = TxType.INCOME; category = "Gaji / Uang Saku" },
-                        label = { Text("Pemasukan") }
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = amountStr,
-                onValueChange = { amountStr = it.filter(Char::isDigit) },
-                label = { Text("Nominal (Rp)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            amountStr.toLongOrNull()?.let { v ->
-                Text("= ${formatRp(v)}", color = EmeraldPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState())
-            ) {
-                listOf(10_000L to "10rb", 15_000L to "15rb", 17_000L to "17rb", 20_000L to "20rb", 50_000L to "50rb").forEach { (amt, lbl) ->
-                    SuggestionChip(
-                        onClick = { amountStr = amt.toString() },
-                        label = { Text(lbl, maxLines = 1) }
-                    )
-                }
-            }
-            // Category chips (horizontal scroll so labels never wrap/clip)
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                categories.forEach { cat ->
-                    FilterChip(
-                        selected = category == cat,
-                        onClick = { category = cat },
-                        label = { Text(cat, fontSize = 12.sp, maxLines = 1) }
-                    )
-                }
-            }
-            // Date quick selector
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(todayISO() to "Hari Ini", offsetDateISO(1) to "Kemarin", offsetDateISO(2) to "2 Hari Lalu").forEach { (iso, lbl) ->
-                    FilterChip(
-                        selected = selectedDate == iso,
-                        onClick = { selectedDate = iso },
-                        label = { Text(lbl, fontSize = 12.sp, maxLines = 1) }
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text("Catatan (misal: makan siang warteg)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Button(
-                onClick = {
-                    val amt = amountStr.toLongOrNull() ?: 0L
-                    if (amt > 0) {
-                        onSave(
-                            TxItem(
-                                id = editingTx?.id ?: UUID.randomUUID().toString(),
-                                type = type,
-                                amount = amt,
-                                category = category,
-                                note = note.trim(),
-                                date = selectedDate,
-                                createdAt = editingTx?.createdAt ?: System.currentTimeMillis()
-                            )
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(if (editingTx != null) "Simpan Perubahan" else "Simpan Transaksi")
-            }
-        }
     }
 }
 
@@ -1767,146 +394,135 @@ fun SettingsDialog(
     onUpdateState: (AppState) -> Unit,
     onExportJson: () -> Unit,
     onImportJson: () -> Unit,
-    onClearTx: () -> Unit,
     onResetAll: () -> Unit
 ) {
     val context = LocalContext.current
-    val notifPrefs = remember { context.getSharedPreferences(ReminderReceiver.PREFS_NAME, Context.MODE_PRIVATE) }
-    var remindersOn by remember { mutableStateOf(notifPrefs.getBoolean(ReminderReceiver.KEY_ENABLED, true)) }
-    var showPinInput by remember { mutableStateOf(false) }
-    var confirmClearTx by remember { mutableStateOf(false) }
-    var confirmResetAll by remember { mutableStateOf(false) }
+    var cycleInput by remember { mutableStateOf(state.cycleStartDay.toString()) }
+    var targetSaveInput by remember { mutableStateOf(state.monthlySavingTarget.toString()) }
+    var pinInput by remember { mutableStateOf(state.pin ?: "") }
+    var confirmReset by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Pengaturan & Data", fontWeight = FontWeight.Bold) },
+        title = { Text("Pengaturan", fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Status Jatah di Panel Notif", fontWeight = FontWeight.Medium)
-                        Text("Tampilkan sisa Rp 20rb di bar notifikasi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("Tema Gelap (Dark Mode)", fontSize = 13.sp)
                     Switch(
-                        checked = state.ongoingBar,
-                        onCheckedChange = { onUpdateState(state.copy(ongoingBar = it)) }
+                        checked = state.darkTheme,
+                        onCheckedChange = { onUpdateState(state.copy(darkTheme = it)) }
                     )
                 }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Pengingat Harian (Masak & Nabung)", fontWeight = FontWeight.Medium)
-                        Text("Notif pukul 11:30, 16:30, 18:00, 20:30", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("Notifikasi Bar Harian", fontSize = 13.sp)
                     Switch(
-                        checked = remindersOn,
+                        checked = state.ongoingBar,
                         onCheckedChange = { enabled ->
-                            remindersOn = enabled
-                            if (enabled) ReminderReceiver.scheduleDailyReminders(context)
-                            else ReminderReceiver.cancelDailyReminders(context)
+                            onUpdateState(state.copy(ongoingBar = enabled))
+                            if (!enabled) ReminderReceiver.cancelOngoingBudgetNotification(context)
                         }
                     )
                 }
 
-                OutlinedButton(
-                    onClick = { ReminderReceiver.testNotification(context) },
+                OutlinedTextField(
+                    value = cycleInput,
+                    onValueChange = { cycleInput = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Tanggal Mulai Siklus Bulanan (1-28)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Tes Notifikasi Sekarang")
-                }
+                )
+                OutlinedTextField(
+                    value = targetSaveInput,
+                    onValueChange = { targetSaveInput = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Target Nabung Bulanan (Rp)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = pinInput,
+                    onValueChange = { if (it.length <= 4) pinInput = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("PIN Kunci 4 Digit (kosong = nonaktif)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 HorizontalDivider()
 
-                OutlinedButton(onClick = { showPinInput = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.pin == null) "Pasang PIN 4 Digit" else "Ubah / Hapus PIN")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) {
+                        Text("Backup", fontSize = 12.sp)
+                    }
+                    OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) {
+                        Text("Restore", fontSize = 12.sp)
+                    }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onExportJson, modifier = Modifier.weight(1f)) { Text("Ekspor") }
-                    OutlinedButton(onClick = onImportJson, modifier = Modifier.weight(1f)) { Text("Impor") }
-                }
-
-                TextButton(onClick = { confirmClearTx = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Hapus Riwayat Transaksi Saja", color = WarnAmber)
-                }
-                TextButton(onClick = { confirmResetAll = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Hapus Semua Data (Reset Total)", color = DangerRed)
+                TextButton(
+                    onClick = { confirmReset = true },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("Reset Semua Data", color = DangerRed, fontSize = 12.sp)
                 }
             }
         },
         confirmButton = {
+            Button(
+                onClick = {
+                    val cDay = (cycleInput.toIntOrNull() ?: state.cycleStartDay).coerceIn(1, 28)
+                    val tSave = (targetSaveInput.toLongOrNull() ?: state.monthlySavingTarget).coerceAtLeast(0L)
+                    val cleanPin = if (pinInput.length == 4) pinInput else null
+                    onUpdateState(
+                        state.copy(
+                            cycleStartDay = cDay,
+                            monthlySavingTarget = tSave,
+                            pin = cleanPin
+                        )
+                    )
+                    onDismiss()
+                }
+            ) {
+                Text("Simpan")
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text("Tutup") }
         }
     )
 
-    if (confirmClearTx) {
+    if (confirmReset) {
         AlertDialog(
-            onDismissRequest = { confirmClearTx = false },
-            title = { Text("Hapus Riwayat Transaksi?") },
-            text = { Text("Semua catatan pemasukan & pengeluaran akan dihapus, sedangkan target tabungan dan larangan tetap tersimpan.") },
-            confirmButton = {
-                Button(onClick = { confirmClearTx = false; onClearTx() }) { Text("Ya, Hapus") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClearTx = false }) { Text("Batal") }
-            }
-        )
-    }
-
-    if (confirmResetAll) {
-        AlertDialog(
-            onDismissRequest = { confirmResetAll = false },
+            onDismissRequest = { confirmReset = false },
             title = { Text("Reset Semua Data?") },
-            text = { Text("Seluruh transaksi, target tabungan, larangan jajan, dan PIN akan dihapus permanen dari HP ini.") },
+            text = { Text("Semua dompet, transaksi, dan target tabungan akan dihapus permanen.") },
             confirmButton = {
-                Button(
-                    onClick = { confirmResetAll = false; onResetAll() },
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
-                ) { Text("Ya, Reset Total") }
+                TextButton(onClick = {
+                    confirmReset = false
+                    onResetAll()
+                }) {
+                    Text("Ya, Hapus", color = DangerRed)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { confirmResetAll = false }) { Text("Batal") }
+                TextButton(onClick = { confirmReset = false }) { Text("Batal") }
             }
-        )
-    }
-
-    if (showPinInput) {
-        var newPin by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showPinInput = false },
-            title = { Text("Atur PIN 4 Digit") },
-            text = {
-                OutlinedTextField(
-                    value = newPin,
-                    onValueChange = { if (it.length <= 4) newPin = it.filter(Char::isDigit) },
-                    label = { Text("4 angka (kosongkan untuk matikan)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (newPin.isEmpty()) {
-                        onUpdateState(state.copy(pin = null))
-                        showPinInput = false
-                    } else if (newPin.length == 4) {
-                        onUpdateState(state.copy(pin = newPin))
-                        showPinInput = false
-                    }
-                }) { Text("Simpan") }
-            },
-            dismissButton = { TextButton(onClick = { showPinInput = false }) { Text("Batal") } }
         )
     }
 }
