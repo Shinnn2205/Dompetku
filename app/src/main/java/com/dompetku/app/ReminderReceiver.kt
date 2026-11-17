@@ -19,6 +19,10 @@ class ReminderReceiver : BroadcastReceiver() {
             if (prefs.getBoolean(KEY_ENABLED, true)) {
                 scheduleDailyReminders(context)
             }
+            val state = FinanceRepo.load(context)
+            if (state.ongoingBar) {
+                updateOngoingBudgetNotification(context, state)
+            }
             return
         }
 
@@ -31,6 +35,8 @@ class ReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val CHANNEL_ID = "dompetku_reminders"
+        const val CHANNEL_ONGOING_ID = "dompetku_ongoing_budget"
+        const val ONGOING_ID = 777
         const val PREFS_NAME = "dompetku_notif_prefs"
         const val KEY_ENABLED = "reminders_enabled"
         const val EXTRA_TITLE = "extra_title"
@@ -41,16 +47,70 @@ class ReminderReceiver : BroadcastReceiver() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-                    val channel = NotificationChannel(
-                        CHANNEL_ID,
-                        "Pengingat Masak & Nabung",
-                        NotificationManager.IMPORTANCE_DEFAULT
-                    ).apply {
-                        description = "Pengingat harian agar rajin masak, tahan jajan, dan menabung"
-                    }
-                    nm.createNotificationChannel(channel)
+                    nm.createNotificationChannel(
+                        NotificationChannel(
+                            CHANNEL_ID,
+                            "Pengingat Masak & Nabung",
+                            NotificationManager.IMPORTANCE_HIGH
+                        ).apply {
+                            description = "Pengingat harian agar rajin masak, tahan jajan, dan menabung"
+                        }
+                    )
+                }
+                if (nm.getNotificationChannel(CHANNEL_ONGOING_ID) == null) {
+                    nm.createNotificationChannel(
+                        NotificationChannel(
+                            CHANNEL_ONGOING_ID,
+                            "Status Jatah Harian",
+                            NotificationManager.IMPORTANCE_LOW
+                        ).apply {
+                            description = "Menampilkan sisa jatah pengeluaran harian di panel notifikasi"
+                            setShowBadge(false)
+                        }
+                    )
                 }
             }
+        }
+
+        fun updateOngoingBudgetNotification(context: Context, state: AppState) {
+            ensureChannel(context)
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (!state.ongoingBar || state.dailyLimit <= 0L) {
+                nm.cancel(ONGOING_ID)
+                return
+            }
+
+            val today = todayISO()
+            val spentToday = state.transactions
+                .filter { it.type == TxType.EXPENSE && it.date == today }
+                .sumOf { it.amount }
+            val remaining = state.dailyLimit - spentToday
+
+            val title = if (remaining > 0) {
+                "Sisa Jatah Hari Ini: ${formatRp(remaining)}"
+            } else {
+                "STOP! Jatah ${formatRp(state.dailyLimit)} Hari Ini Habis"
+            }
+            val sub = "Makan siang maks ${formatRp(state.lunchLimit)} • Malam wajib masak"
+
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingOpen = PendingIntent.getActivity(
+                context, ONGOING_ID, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notif = NotificationCompat.Builder(context, CHANNEL_ONGOING_ID)
+                .setSmallIcon(android.R.drawable.ic_menu_today)
+                .setContentTitle(title)
+                .setContentText(sub)
+                .setOngoing(true)
+                .setSilent(true)
+                .setContentIntent(pendingOpen)
+                .build()
+
+            nm.notify(ONGOING_ID, notif)
         }
 
         fun showNotification(context: Context, id: Int, title: String, message: String) {
@@ -59,9 +119,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             val pendingOpen = PendingIntent.getActivity(
-                context,
-                id,
-                openIntent,
+                context, id, openIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
@@ -70,7 +128,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(pendingOpen)
                 .build()
@@ -79,29 +137,38 @@ class ReminderReceiver : BroadcastReceiver() {
             nm.notify(id, notif)
         }
 
+        fun testNotification(context: Context) {
+            showNotification(
+                context,
+                999,
+                "Pengingat DompetKu Aktif",
+                "Sisa jatah harian Rp 20.000, makan siang maks Rp 17.000, malam wajib masak!"
+            )
+        }
+
         fun scheduleDailyReminders(context: Context) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(KEY_ENABLED, true).apply()
 
             scheduleAlarm(
                 context, 101, 11, 30,
-                "🍱 Makan Siang Hemat!",
-                "Boleh beli makan siang, tapi ingat maksimal Rp 17.000 ya! Total jatah harianmu Rp 20.000."
+                "Makan Siang Hemat",
+                "Boleh beli makan siang, tapi ingat maksimal Rp 17.000! Total jatah harianmu Rp 20.000."
             )
             scheduleAlarm(
                 context, 102, 16, 30,
-                "🧋 Awas Jam Rawan Jajan!",
+                "Awas Jam Rawan Jajan",
                 "Total jatahmu hari ini maksimal Rp 20.000. Tahan jajan sore!"
             )
             scheduleAlarm(
                 context, 104, 18, 0,
-                "🍳 Malam Ini Wajib Masak!",
+                "Malam Ini Wajib Masak",
                 "Jangan beli jajan atau pesan GoFood malam ini! Masak sendiri di rumah dan simpan uangnya buat target tabunganmu."
             )
             scheduleAlarm(
                 context, 103, 20, 30,
-                "💰 Rekap & Nabung Hari Ini",
-                "Sudah catat pengeluaran GoPay/tunai hari ini? Cek sisa jatah harian & setor ke target tabunganmu."
+                "Rekap & Nabung Hari Ini",
+                "Sudah catat makan siang & cek sisa jatah Rp 20.000 hari ini? Tabungkan sisanya sekarang."
             )
         }
 
@@ -135,9 +202,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 putExtra(EXTRA_MESSAGE, message)
             }
             val pi = PendingIntent.getBroadcast(
-                context,
-                requestCode,
-                intent,
+                context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
