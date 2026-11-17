@@ -132,6 +132,16 @@
             <div class="progress-fill" id="daily-progress" style="width: 0%"></div>
           </div>
           <p class="hint-text" id="daily-guard-hint">Atur batas harian di menu Larangan.</p>
+          <button class="btn-secondary btn-sm btn-full" id="btn-save-leftover" style="display:none;margin-top:10px;">💰 Tabungkan Sisa Jatah Hari Ini</button>
+        </div>
+
+        <!-- Primary Goal Spotlight Card -->
+        <div class="card" id="home-goal-spotlight">
+          <div class="card-header">
+            <h3>🎯 Target Tabungan Utama</h3>
+            <button class="link-btn" data-goto="savings">Semua Target</button>
+          </div>
+          <div id="home-goal-body"></div>
         </div>
 
         <!-- Cooking Challenge Card -->
@@ -422,7 +432,8 @@
       <h3 id="ban-warn-title">Eits, Tahan Dulu!</h3>
       <p id="ban-warn-message" class="body-text"></p>
       <div class="ban-warn-actions">
-        <button type="button" class="btn-primary btn-full" id="btn-ban-cancel">✅ Batal Beli (Pertahankan Streak!)</button>
+        <button type="button" class="btn-primary btn-full" id="btn-ban-save-instead">💰 Batal Beli &amp; Masukkan ke Tabungan!</button>
+        <button type="button" class="btn-secondary btn-full" id="btn-ban-cancel">✅ Batal Beli Saja (Pertahankan Streak)</button>
         <button type="button" class="btn-danger-outline btn-full" id="btn-ban-proceed">Tetap Catat Pengeluaran</button>
       </div>
     </div>

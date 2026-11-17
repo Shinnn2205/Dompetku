@@ -62,7 +62,16 @@
     dailyLimit: 20000,
     monthlyLimit: 0,
     transactions: [],
-    goals: [],
+    goals: [
+      {
+        id: 'goal_default_1',
+        emoji: '🛡️',
+        name: 'Dana Darurat Pertama',
+        target: 1000000,
+        saved: 0,
+        deadline: null
+      }
+    ],
     bills: [],
     cookDays: [],
     cookSavedTotal: 0,
@@ -600,9 +609,11 @@
     const badge = document.getElementById('daily-guard-badge');
     const bar = document.getElementById('daily-progress');
     const hint = document.getElementById('daily-guard-hint');
+    const leftoverBtn = document.getElementById('btn-save-leftover');
 
     bar.className = 'progress-fill';
     badge.className = 'badge';
+    leftoverBtn.style.display = 'none';
 
     if (limit > 0) {
       const pct = Math.min(100, Math.round((todaySpent / limit) * 100));
@@ -623,10 +634,38 @@
         badge.textContent = 'Aman';
         hint.textContent = `Masih ada sisa ${formatRupiah(rem)} untuk hari ini.`;
       }
+      if (rem > 0 && state.goals.length > 0) {
+        leftoverBtn.style.display = 'inline-flex';
+        leftoverBtn.textContent = `💰 Tabungkan Sisa ${formatRupiah(rem)} ke Target`;
+      }
     } else {
       bar.style.width = '0%';
       badge.textContent = 'Nonaktif';
       hint.textContent = 'Atur batas harian di menu Larangan agar pengeluaran lebih terkontrol.';
+    }
+
+    // Primary Goal Spotlight
+    const goalBody = document.getElementById('home-goal-body');
+    if (state.goals.length === 0) {
+      goalBody.innerHTML = `<div class="empty-state">Belum ada target tabungan. Buat di tab Target!</div>`;
+    } else {
+      const g = state.goals[0];
+      const pct = Math.min(100, Math.round(((g.saved || 0) / g.target) * 100));
+      goalBody.innerHTML = `
+        <div class="goal-top">
+          <div class="goal-title-wrap">
+            <span class="goal-emoji">${g.emoji || '🎯'}</span>
+            <div>
+              <div class="goal-name">${escapeHTML(g.name)}</div>
+              <div class="goal-sub">${formatRupiah(g.saved || 0, true)} / ${formatRupiah(g.target)}</div>
+            </div>
+          </div>
+          <span class="badge badge-success">${pct}%</span>
+        </div>
+        <div class="progress-track" style="margin-top:10px;">
+          <div class="progress-fill" style="width:${pct}%"></div>
+        </div>
+      `;
     }
 
     renderWeeklyChart();
@@ -1037,6 +1076,53 @@
     });
 
     // Ban warning actions
+    // Ban warning actions
+    document.getElementById('btn-ban-save-instead').addEventListener('click', () => {
+      if (!pendingTx) return;
+      const amt = pendingTx.tx.amount;
+      pendingTx = null;
+      closeModal('modal-ban-warning');
+      closeModal('modal-tx');
+      if (state.goals.length === 0) {
+        showToast('Mantap! Pengeluaran dibatalkan 💪');
+        return;
+      }
+      const goal = state.goals[0];
+      goal.saved = (goal.saved || 0) + amt;
+      state.transactions.push({
+        id: uid('tx'),
+        type: 'saving',
+        amount: amt,
+        category: 'Tabungan',
+        note: `Dialihkan dari jajan ke ${goal.name}`,
+        date: todayISO(),
+        createdAt: Date.now()
+      });
+      saveState();
+      renderAll();
+      showToast(`Keren! ${formatRupiah(amt)} dialihkan ke ${goal.name} 🎯`);
+    });
+
+    document.getElementById('btn-save-leftover').addEventListener('click', () => {
+      if (state.goals.length === 0 || !state.dailyLimit) return;
+      const rem = state.dailyLimit - computeTodayExpense();
+      if (rem <= 0) return;
+      const goal = state.goals[0];
+      goal.saved = (goal.saved || 0) + rem;
+      state.transactions.push({
+        id: uid('tx'),
+        type: 'saving',
+        amount: rem,
+        category: 'Tabungan',
+        note: `Sisa jatah harian ke ${goal.name}`,
+        date: todayISO(),
+        createdAt: Date.now()
+      });
+      saveState();
+      renderAll();
+      showToast(`Sisa ${formatRupiah(rem)} berhasil ditabung ke ${goal.name}! 🎯`);
+    });
+
     document.getElementById('btn-ban-cancel').addEventListener('click', () => {
       pendingTx = null;
       closeModal('modal-ban-warning');
