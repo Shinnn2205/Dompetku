@@ -45,6 +45,7 @@ data class AppState(
     val hideBalance: Boolean = false,
     val strictLock: Boolean = true,
     val ongoingBar: Boolean = true,
+    val appBlockerEnabled: Boolean = true,
     val dailyLimit: Long = 20_000L,
     val lunchLimit: Long = 17_000L,
     val pin: String? = null,
@@ -140,6 +141,7 @@ object FinanceRepo {
             put("hideBalance", state.hideBalance)
             put("strictLock", state.strictLock)
             put("ongoingBar", state.ongoingBar)
+            put("appBlockerEnabled", state.appBlockerEnabled)
             put("dailyLimit", state.dailyLimit)
             put("lunchLimit", state.lunchLimit)
             put("pin", state.pin ?: JSONObject.NULL)
@@ -259,6 +261,7 @@ object FinanceRepo {
                 hideBalance = o.optBoolean("hideBalance", false),
                 strictLock = o.optBoolean("strictLock", true),
                 ongoingBar = o.optBoolean("ongoingBar", true),
+                appBlockerEnabled = o.optBoolean("appBlockerEnabled", true),
                 dailyLimit = o.optLong("dailyLimit", 20_000L),
                 lunchLimit = o.optLong("lunchLimit", 17_000L),
                 pin = if (o.isNull("pin")) null else o.optString("pin"),

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">DompetKu</string>
+    <string name="accessibility_desc">Menahan pembukaan aplikasi belanja/pesan makan saat jatah harian habis atau jam masak malam.</string>
 </resources>

@@ -188,6 +188,12 @@ fun isNotificationListenerEnabled(context: Context): Boolean {
     return cn in flat
 }
 
+fun isAccessibilityBlockerEnabled(context: Context): Boolean {
+    val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+    val cn = ComponentName(context, AppBlockerService::class.java).flattenToString()
+    return cn in flat
+}
+
 @Composable
 fun PinLockScreen(expectedPin: String, onUnlocked: () -> Unit) {
     var entered by remember { mutableStateOf("") }
@@ -1417,6 +1423,7 @@ fun SettingsDialog(
 ) {
     val context = LocalContext.current
     val listenerActive = isNotificationListenerEnabled(context)
+    val blockerActive = isAccessibilityBlockerEnabled(context)
     var showPinInput by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -1455,6 +1462,36 @@ fun SettingsDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(if (listenerActive) "Kelola Izin Notifikasi" else "Aktifkan Deteksi GoPay")
+                }
+
+                HorizontalDivider()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Blokir App Jajan (Gojek/Shopee/Grab)", fontWeight = FontWeight.Medium)
+                        Text(
+                            if (blockerActive) "Aktif — Cegat saat jatah habis atau malam jam 18:00+"
+                            else "Belum aktif — Izinkan Aksesibilitas agar DompetKu bisa mencegat saat mau jajan",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (blockerActive) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = state.appBlockerEnabled,
+                        onCheckedChange = { onUpdateState(state.copy(appBlockerEnabled = it)) }
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (blockerActive) "Kelola Izin Pemblokir" else "Aktifkan Pemblokir App Jajan")
                 }
 
                 OutlinedButton(
