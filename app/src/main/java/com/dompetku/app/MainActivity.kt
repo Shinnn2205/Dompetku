@@ -308,7 +308,9 @@ fun DompetKuApp(
     val haptic = LocalHapticFeedback.current
     var currentTab by remember { mutableIntStateOf(0) }
     var showAddTxSheet by remember { mutableStateOf(false) }
+    var editingTx by remember { mutableStateOf<TxItem?>(null) }
     var addTxInitialType by remember { mutableStateOf(TxType.EXPENSE) }
+    var showAdjustBalance by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
     // Pending transaction blocked by strict daily limit or ban
@@ -321,7 +323,8 @@ fun DompetKuApp(
     val balance = state.transactions.sumOf { if (it.type == TxType.INCOME) it.amount else -it.amount }
 
     fun handleTrySaveTx(tx: TxItem) {
-        if (tx.type == TxType.EXPENSE) {
+        val isEdit = state.transactions.any { it.id == tx.id }
+        if (!isEdit && tx.type == TxType.EXPENSE) {
             val reasons = mutableListOf<String>()
             if (state.dailyLimit > 0 && tx.date == today && todaySpent + tx.amount > state.dailyLimit) {
                 reasons.add("Pengeluaran hari ini akan melebihi batas maksimal ${formatRp(state.dailyLimit)}.")
@@ -355,9 +358,15 @@ fun DompetKuApp(
             }
         }
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        onUpdateState(state.copy(transactions = state.transactions + tx))
+        val newList = if (isEdit) {
+            state.transactions.map { if (it.id == tx.id) tx else it }
+        } else {
+            state.transactions + tx
+        }
+        onUpdateState(state.copy(transactions = newList))
         showAddTxSheet = false
-        Toast.makeText(context, "Transaksi disimpan", Toast.LENGTH_SHORT).show()
+        editingTx = null
+        Toast.makeText(context, if (isEdit) "Transaksi diperbarui" else "Transaksi disimpan", Toast.LENGTH_SHORT).show()
     }
 
     Scaffold(
@@ -446,9 +455,11 @@ fun DompetKuApp(
                     balance = balance,
                     todaySpent = todaySpent,
                     onQuickAdd = { type ->
+                        editingTx = null
                         addTxInitialType = type
                         showAddTxSheet = true
                     },
+                    onAdjustBalance = { showAdjustBalance = true },
                     onCookToday = {
                         if (today !in state.cookDays) {
                             onUpdateState(
@@ -481,6 +492,11 @@ fun DompetKuApp(
                 )
                 1 -> HistoryScreen(
                     state = state,
+                    onEditTx = { tx ->
+                        editingTx = tx
+                        addTxInitialType = tx.type
+                        showAddTxSheet = true
+                    },
                     onDeleteTx = { id ->
                         onUpdateState(state.copy(transactions = state.transactions.filterNot { it.id == id }))
                     }
@@ -490,6 +506,11 @@ fun DompetKuApp(
                     onAddGoal = { name, target ->
                         val g = SavingsGoal(UUID.randomUUID().toString(), name, target, 0L)
                         onUpdateState(state.copy(goals = state.goals + g))
+                    },
+                    onEditGoal = { id, name, target ->
+                        onUpdateState(
+                            state.copy(goals = state.goals.map { if (it.id == id) it.copy(name = name, target = target) else it })
+                        )
                     },
                     onDeposit = { goalId, amount, deduct ->
                         val goal = state.goals.firstOrNull { it.id == goalId } ?: return@GoalsScreen
@@ -549,8 +570,57 @@ fun DompetKuApp(
     if (showAddTxSheet) {
         AddTransactionSheet(
             initialType = addTxInitialType,
-            onDismiss = { showAddTxSheet = false },
+            editingTx = editingTx,
+            onDismiss = { showAddTxSheet = false; editingTx = null },
             onSave = ::handleTrySaveTx
+        )
+    }
+
+    if (showAdjustBalance) {
+        var newBalStr by remember { mutableStateOf(balance.coerceAtLeast(0L).toString()) }
+        AlertDialog(
+            onDismissRequest = { showAdjustBalance = false },
+            title = { Text("Atur Saldo Awal / Saat Ini") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Masukkan total uang yang kamu pegang sekarang (tunai / e-wallet) agar saldo akurat.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = newBalStr,
+                        onValueChange = { newBalStr = it.filter(Char::isDigit) },
+                        label = { Text("Saldo Sekarang (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    newBalStr.toLongOrNull()?.let { v ->
+                        Text("= ${formatRp(v)}", color = EmeraldPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val targetBal = newBalStr.toLongOrNull() ?: return@Button
+                    val diff = targetBal - balance
+                    if (diff != 0L) {
+                        val adjTx = TxItem(
+                            id = UUID.randomUUID().toString(),
+                            type = if (diff > 0) TxType.INCOME else TxType.EXPENSE,
+                            amount = kotlin.math.abs(diff),
+                            category = "Penyesuaian Saldo",
+                            note = "Atur saldo awal",
+                            date = today,
+                            createdAt = System.currentTimeMillis()
+                        )
+                        onUpdateState(state.copy(transactions = state.transactions + adjTx))
+                    }
+                    showAdjustBalance = false
+                    Toast.makeText(context, "Saldo disesuaikan", Toast.LENGTH_SHORT).show()
+                }) { Text("Simpan") }
+            },
+            dismissButton = { TextButton(onClick = { showAdjustBalance = false }) { Text("Batal") } }
         )
     }
 
@@ -679,6 +749,7 @@ fun HomeScreen(
     balance: Long,
     todaySpent: Long,
     onQuickAdd: (TxType) -> Unit,
+    onAdjustBalance: () -> Unit,
     onCookToday: () -> Unit,
     onSaveLeftover: (Long) -> Unit,
     onOpenTab: (Int) -> Unit
@@ -710,9 +781,10 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Saldo Dompet",
+                        "Saldo Dompet (ketuk untuk atur)",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { onAdjustBalance() }
                     )
                     Surface(
                         shape = RoundedCornerShape(999.dp),
@@ -1031,8 +1103,20 @@ fun HomeScreen(
     }
 }
 
+fun formatDateHuman(iso: String): String {
+    if (iso == todayISO()) return "Hari Ini"
+    if (iso == offsetDateISO(1)) return "Kemarin"
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val d = sdf.parse(iso) ?: return iso
+        SimpleDateFormat("EEE, d MMM", Locale("id", "ID")).format(d)
+    } catch (_: Exception) {
+        iso
+    }
+}
+
 @Composable
-fun TxRow(tx: TxItem, masked: Boolean, onDelete: (() -> Unit)?) {
+fun TxRow(tx: TxItem, masked: Boolean, onClick: (() -> Unit)? = null, onDelete: (() -> Unit)?) {
     val icon = when (tx.type) {
         TxType.INCOME -> Icons.Rounded.ArrowDownward
         TxType.EXPENSE -> Icons.Rounded.ArrowUpward
@@ -1048,6 +1132,7 @@ fun TxRow(tx: TxItem, masked: Boolean, onDelete: (() -> Unit)?) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1069,7 +1154,7 @@ fun TxRow(tx: TxItem, masked: Boolean, onDelete: (() -> Unit)?) {
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "${tx.category} • ${tx.date}",
+                "${tx.category} • ${formatDateHuman(tx.date)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1088,7 +1173,11 @@ fun TxRow(tx: TxItem, masked: Boolean, onDelete: (() -> Unit)?) {
 }
 
 @Composable
-fun HistoryScreen(state: AppState, onDeleteTx: (String) -> Unit) {
+fun HistoryScreen(
+    state: AppState,
+    onEditTx: (TxItem) -> Unit,
+    onDeleteTx: (String) -> Unit
+) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf<TxType?>(null) }
 
@@ -1097,33 +1186,38 @@ fun HistoryScreen(state: AppState, onDeleteTx: (String) -> Unit) {
             (filter == null || tx.type == filter) &&
                 (query.isBlank() || tx.note.contains(query, true) || tx.category.contains(query, true))
         }
-        .sortedByDescending { it.createdAt }
+        .sortedWith(compareByDescending<TxItem> { it.date }.thenByDescending { it.createdAt })
+
+    val grouped = filtered.groupBy { it.date }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 92.dp),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Cari transaksi...") },
+                placeholder = { Text("Cari catatan atau kategori...") },
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth()
             )
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            ) {
                 FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("Semua") })
                 FilterChip(selected = filter == TxType.INCOME, onClick = { filter = TxType.INCOME }, label = { Text("Masuk") })
                 FilterChip(selected = filter == TxType.EXPENSE, onClick = { filter = TxType.EXPENSE }, label = { Text("Keluar") })
                 FilterChip(selected = filter == TxType.SAVING, onClick = { filter = TxType.SAVING }, label = { Text("Tabungan") })
             }
         }
-        if (filtered.isEmpty()) {
+        if (grouped.isEmpty()) {
             item {
                 Text(
                     "Belum ada transaksi yang cocok.",
@@ -1132,13 +1226,46 @@ fun HistoryScreen(state: AppState, onDeleteTx: (String) -> Unit) {
                 )
             }
         } else {
-            items(filtered, key = { it.id }) { tx ->
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
-                        TxRow(tx = tx, masked = state.hideBalance, onDelete = { onDeleteTx(tx.id) })
+            grouped.forEach { (date, dayItems) ->
+                val dayOut = dayItems.filter { it.type == TxType.EXPENSE }.sumOf { it.amount }
+                item(key = "hdr_$date") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            formatDateHuman(date),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (dayOut > 0) {
+                            Text(
+                                "Keluar ${formatRp(dayOut, state.hideBalance)}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                item(key = "card_$date") {
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            dayItems.forEachIndexed { idx, tx ->
+                                TxRow(
+                                    tx = tx,
+                                    masked = state.hideBalance,
+                                    onClick = { onEditTx(tx) },
+                                    onDelete = { onDeleteTx(tx.id) }
+                                )
+                                if (idx < dayItems.lastIndex) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1150,10 +1277,12 @@ fun HistoryScreen(state: AppState, onDeleteTx: (String) -> Unit) {
 fun GoalsScreen(
     state: AppState,
     onAddGoal: (String, Long) -> Unit,
+    onEditGoal: (String, String, Long) -> Unit,
     onDeposit: (String, Long, Boolean) -> Unit,
     onDeleteGoal: (String) -> Unit
 ) {
     var showNewGoal by remember { mutableStateOf(false) }
+    var editingGoal by remember { mutableStateOf<SavingsGoal?>(null) }
     var depositGoal by remember { mutableStateOf<SavingsGoal?>(null) }
 
     val totalSaved = state.goals.sumOf { it.saved }
@@ -1219,6 +1348,9 @@ fun GoalsScreen(
                         Button(onClick = { depositGoal = g }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
                             Text("Nabung")
                         }
+                        OutlinedButton(onClick = { editingGoal = g }, shape = RoundedCornerShape(12.dp)) {
+                            Text("Ubah")
+                        }
                         OutlinedButton(onClick = { onDeleteGoal(g.id) }, shape = RoundedCornerShape(12.dp)) {
                             Text("Hapus")
                         }
@@ -1256,6 +1388,41 @@ fun GoalsScreen(
                 }) { Text("Simpan") }
             },
             dismissButton = { TextButton(onClick = { showNewGoal = false }) { Text("Batal") } }
+        )
+    }
+
+    if (editingGoal != null) {
+        val g = editingGoal!!
+        var name by remember(g.id) { mutableStateOf(g.name) }
+        var targetStr by remember(g.id) { mutableStateOf(g.target.toString()) }
+        AlertDialog(
+            onDismissRequest = { editingGoal = null },
+            title = { Text("Ubah Target Tabungan") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Nama Target") }, singleLine = true)
+                    OutlinedTextField(
+                        value = targetStr,
+                        onValueChange = { targetStr = it.filter(Char::isDigit) },
+                        label = { Text("Nominal Target (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    targetStr.toLongOrNull()?.let { v ->
+                        Text("= ${formatRp(v)}", color = EmeraldPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val t = targetStr.toLongOrNull() ?: 0L
+                    if (name.isNotBlank() && t > 0) {
+                        onEditGoal(g.id, name.trim(), t)
+                        editingGoal = null
+                    }
+                }) { Text("Simpan") }
+            },
+            dismissButton = { TextButton(onClick = { editingGoal = null }) { Text("Batal") } }
         )
     }
 
@@ -1464,13 +1631,19 @@ fun ControlScreen(
 @Composable
 fun AddTransactionSheet(
     initialType: TxType,
+    editingTx: TxItem? = null,
     onDismiss: () -> Unit,
     onSave: (TxItem) -> Unit
 ) {
-    var type by remember { mutableStateOf(initialType) }
-    var amountStr by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(if (initialType == TxType.INCOME) "Gaji / Uang Saku" else "Makan & Minum") }
-    var note by remember { mutableStateOf("") }
+    var type by remember(editingTx) { mutableStateOf(editingTx?.type ?: initialType) }
+    var amountStr by remember(editingTx) { mutableStateOf(editingTx?.amount?.toString() ?: "") }
+    var category by remember(editingTx) {
+        mutableStateOf(
+            editingTx?.category ?: if (initialType == TxType.INCOME) "Gaji / Uang Saku" else "Makan & Minum"
+        )
+    }
+    var note by remember(editingTx) { mutableStateOf(editingTx?.note ?: "") }
+    var selectedDate by remember(editingTx) { mutableStateOf(editingTx?.date ?: todayISO()) }
 
     val categories = if (type == TxType.INCOME) {
         listOf("Gaji / Uang Saku", "Bonus / Hadiah", "Freelance", "Lainnya")
@@ -1482,22 +1655,29 @@ fun AddTransactionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Catat Transaksi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = type == TxType.EXPENSE,
-                    onClick = { type = TxType.EXPENSE; category = "Makan & Minum" },
-                    label = { Text("Pengeluaran") }
-                )
-                FilterChip(
-                    selected = type == TxType.INCOME,
-                    onClick = { type = TxType.INCOME; category = "Gaji / Uang Saku" },
-                    label = { Text("Pemasukan") }
-                )
+            Text(
+                if (editingTx != null) "Ubah Transaksi" else "Catat Transaksi",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            if (type != TxType.SAVING) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = type == TxType.EXPENSE,
+                        onClick = { type = TxType.EXPENSE; category = "Makan & Minum" },
+                        label = { Text("Pengeluaran") }
+                    )
+                    FilterChip(
+                        selected = type == TxType.INCOME,
+                        onClick = { type = TxType.INCOME; category = "Gaji / Uang Saku" },
+                        label = { Text("Pemasukan") }
+                    )
+                }
             }
             OutlinedTextField(
                 value = amountStr,
@@ -1507,6 +1687,9 @@ fun AddTransactionSheet(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            amountStr.toLongOrNull()?.let { v ->
+                Text("= ${formatRp(v)}", color = EmeraldPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
@@ -1531,6 +1714,19 @@ fun AddTransactionSheet(
                     )
                 }
             }
+            // Date quick selector
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(todayISO() to "Hari Ini", offsetDateISO(1) to "Kemarin", offsetDateISO(2) to "2 Hari Lalu").forEach { (iso, lbl) ->
+                    FilterChip(
+                        selected = selectedDate == iso,
+                        onClick = { selectedDate = iso },
+                        label = { Text(lbl, fontSize = 12.sp, maxLines = 1) }
+                    )
+                }
+            }
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
@@ -1544,13 +1740,13 @@ fun AddTransactionSheet(
                     if (amt > 0) {
                         onSave(
                             TxItem(
-                                id = UUID.randomUUID().toString(),
+                                id = editingTx?.id ?: UUID.randomUUID().toString(),
                                 type = type,
                                 amount = amt,
                                 category = category,
                                 note = note.trim(),
-                                date = todayISO(),
-                                createdAt = System.currentTimeMillis()
+                                date = selectedDate,
+                                createdAt = editingTx?.createdAt ?: System.currentTimeMillis()
                             )
                         )
                     }
@@ -1558,7 +1754,7 @@ fun AddTransactionSheet(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Simpan Transaksi")
+                Text(if (editingTx != null) "Simpan Perubahan" else "Simpan Transaksi")
             }
         }
     }
@@ -1575,6 +1771,8 @@ fun SettingsDialog(
     onResetAll: () -> Unit
 ) {
     val context = LocalContext.current
+    val notifPrefs = remember { context.getSharedPreferences(ReminderReceiver.PREFS_NAME, Context.MODE_PRIVATE) }
+    var remindersOn by remember { mutableStateOf(notifPrefs.getBoolean(ReminderReceiver.KEY_ENABLED, true)) }
     var showPinInput by remember { mutableStateOf(false) }
     var confirmClearTx by remember { mutableStateOf(false) }
     var confirmResetAll by remember { mutableStateOf(false) }
@@ -1599,6 +1797,25 @@ fun SettingsDialog(
                     Switch(
                         checked = state.ongoingBar,
                         onCheckedChange = { onUpdateState(state.copy(ongoingBar = it)) }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Pengingat Harian (Masak & Nabung)", fontWeight = FontWeight.Medium)
+                        Text("Notif pukul 11:30, 16:30, 18:00, 20:30", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = remindersOn,
+                        onCheckedChange = { enabled ->
+                            remindersOn = enabled
+                            if (enabled) ReminderReceiver.scheduleDailyReminders(context)
+                            else ReminderReceiver.cancelDailyReminders(context)
+                        }
                     )
                 }
 
