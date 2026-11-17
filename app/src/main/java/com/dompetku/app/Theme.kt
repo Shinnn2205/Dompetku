@@ -10,20 +10,22 @@ val EmeraldPrimary = Color(0xFF10B981)
 val EmeraldDark = Color(0xFF059669)
 val DangerRed = Color(0xFFEF4444)
 val WarnAmber = Color(0xFFF59E0B)
-val InfoBlue = Color(0xFF3B82F6)
+val InfoBlue = Color(0xFF38BDF8)
 
 private val DarkColors = darkColorScheme(
     primary = EmeraldPrimary,
-    onPrimary = Color(0xFF042F21),
-    primaryContainer = Color(0xFF064E3B),
-    onPrimaryContainer = Color(0xFFA7F3D0),
-    background = Color(0xFF0B0E14),
-    onBackground = Color(0xFFF3F4F6),
-    surface = Color(0xFF131822),
-    onSurface = Color(0xFFF3F4F6),
-    surfaceVariant = Color(0xFF1B2230),
+    onPrimary = Color(0xFF032217),
+    primaryContainer = Color(0xFF0D2E23),
+    onPrimaryContainer = Color(0xFF6EE7B7),
+    secondaryContainer = Color(0xFF1C2331),
+    onSecondaryContainer = Color(0xFFE5E7EB),
+    background = Color(0xFF080A0F),
+    onBackground = Color(0xFFF9FAFB),
+    surface = Color(0xFF121620),
+    onSurface = Color(0xFFF9FAFB),
+    surfaceVariant = Color(0xFF1B2130),
     onSurfaceVariant = Color(0xFF9CA3AF),
-    outline = Color(0xFF283142),
+    outline = Color(0xFF232B3B),
     error = DangerRed
 )
 
@@ -32,13 +34,15 @@ private val LightColors = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD1FAE5),
     onPrimaryContainer = Color(0xFF064E3B),
-    background = Color(0xFFF5F7FA),
-    onBackground = Color(0xFF111827),
+    secondaryContainer = Color(0xFFEFF2F7),
+    onSecondaryContainer = Color(0xFF111827),
+    background = Color(0xFFF4F6FA),
+    onBackground = Color(0xFF0F172A),
     surface = Color.White,
-    onSurface = Color(0xFF111827),
+    onSurface = Color(0xFF0F172A),
     surfaceVariant = Color(0xFFEDF1F7),
-    onSurfaceVariant = Color(0xFF6B7280),
-    outline = Color(0xFFE5E7EB),
+    onSurfaceVariant = Color(0xFF64748B),
+    outline = Color(0xFFE2E8F0),
     error = Color(0xFFDC2626)
 )
 

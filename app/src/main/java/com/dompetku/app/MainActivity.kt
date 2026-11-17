@@ -9,7 +9,12 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,7 +30,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -72,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
 
         ReminderReceiver.ensureChannel(this)
         val initialState = FinanceRepo.load(this)
@@ -377,7 +388,12 @@ fun DompetKuApp(
                         selected = currentTab == idx,
                         onClick = { currentTab = idx },
                         icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
+                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                        )
                     )
                 }
             }
@@ -390,14 +406,18 @@ fun DompetKuApp(
                 },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(16.dp)
+                shape = CircleShape
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = "Catat Transaksi")
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            when (currentTab) {
+        AnimatedContent(
+            targetState = currentTab,
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            label = "tab_transition"
+        ) { tab ->
+            when (tab) {
                 0 -> HomeScreen(
                     state = state,
                     balance = balance,
@@ -592,6 +612,45 @@ fun DompetKuApp(
 }
 
 @Composable
+fun CircleActionBtn(
+    icon: ImageVector,
+    label: String,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(
+                    if (enabled) MaterialTheme.colorScheme.surface
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (enabled) tint else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 fun HomeScreen(
     state: AppState,
     balance: Long,
@@ -609,159 +668,234 @@ fun HomeScreen(
     val dailyLimit = state.dailyLimit
     val remainingToday = (dailyLimit - todaySpent).coerceAtLeast(0L)
     val overLimit = dailyLimit > 0 && todaySpent > dailyLimit
-    val progress = if (dailyLimit > 0) (todaySpent.toFloat() / dailyLimit.toFloat()).coerceIn(0f, 1f) else 0f
+    val rawProgress = if (dailyLimit > 0) (todaySpent.toFloat() / dailyLimit.toFloat()).coerceIn(0f, 1f) else 0f
+    val animProgress by animateFloatAsState(targetValue = rawProgress, animationSpec = tween(500), label = "daily_prog")
 
     val cookedToday = today in state.cookDays
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 92.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. HERO: SISA JATAH HARI INI
+        // 1. OPEN HERO BALANCE + DAILY BUDGET GAUGE
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (overLimit) Color(0xFF2B1215) else MaterialTheme.colorScheme.surface
-                ),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (overLimit) DangerRed.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Saldo Dompet",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Text(
+                            "+${formatRp(monthIncome, state.hideBalance)}  •  -${formatRp(monthExpense, state.hideBalance)}",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    formatRp(balance, state.hideBalance),
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-1).sp
                 )
+            }
+        }
+
+        // 2. 4 CIRCULAR QUICK ACTIONS
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceAround
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
+                CircleActionBtn(
+                    icon = Icons.Rounded.ArrowDownward,
+                    label = "Masuk",
+                    tint = EmeraldPrimary,
+                    onClick = { onQuickAdd(TxType.INCOME) }
+                )
+                CircleActionBtn(
+                    icon = Icons.Rounded.ArrowUpward,
+                    label = "Keluar",
+                    tint = DangerRed,
+                    onClick = { onQuickAdd(TxType.EXPENSE) }
+                )
+                CircleActionBtn(
+                    icon = if (cookedToday) Icons.Rounded.CheckCircle else Icons.Rounded.Restaurant,
+                    label = if (cookedToday) "Sudah Masak" else "Masak",
+                    tint = if (cookedToday) EmeraldPrimary else WarnAmber,
+                    enabled = !cookedToday,
+                    onClick = onCookToday
+                )
+                CircleActionBtn(
+                    icon = Icons.Rounded.Savings,
+                    label = "Tabung",
+                    tint = InfoBlue,
+                    onClick = { onOpenTab(2) }
+                )
+            }
+        }
+
+        // 3. DAILY BUDGET CARD (BORDERLESS ELEVATED)
+        item {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = if (overLimit) Color(0xFF281216) else MaterialTheme.colorScheme.surface
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Sisa Jatah Hari Ini",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column {
+                            Text(
+                                "Sisa Jatah Hari Ini",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (dailyLimit > 0) formatRp(remainingToday, state.hideBalance) else "Belum diatur",
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (overLimit) DangerRed else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                         Surface(
                             shape = RoundedCornerShape(999.dp),
-                            color = if (overLimit) DangerRed.copy(alpha = 0.18f) else EmeraldPrimary.copy(alpha = 0.15f)
+                            color = if (overLimit) DangerRed.copy(alpha = 0.16f) else MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                if (overLimit) "Batas Terlewati" else if (state.strictLock) "Kunci Ketat Aktif" else "Aman",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                fontSize = 11.sp,
+                                if (overLimit) "Habis" else "Maks ${formatRp(dailyLimit)}",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (overLimit) DangerRed else EmeraldPrimary
+                                color = if (overLimit) DangerRed else MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                     }
 
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        if (dailyLimit > 0) formatRp(remainingToday, state.hideBalance) else "Belum diatur",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (overLimit) DangerRed else MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(14.dp))
                     LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)),
-                        color = if (overLimit) DangerRed else if (progress >= 0.8f) WarnAmber else EmeraldPrimary,
+                        progress = { animProgress },
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(999.dp)),
+                        color = if (overLimit) DangerRed else if (animProgress >= 0.8f) WarnAmber else EmeraldPrimary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(
-                            "Terpakai ${formatRp(todaySpent, state.hideBalance)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "Maks ${formatRp(dailyLimit)} • Siang ${formatRp(state.lunchLimit)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Terpakai ${formatRp(todaySpent, state.hideBalance)} • Siang maks ${formatRp(state.lunchLimit)} • Malam masak",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
                     if (dailyLimit > 0 && remainingToday > 0 && state.goals.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(14.dp))
                         FilledTonalButton(
                             onClick = { onSaveLeftover(remainingToday) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(14.dp)
                         ) {
-                            Icon(Icons.Rounded.Savings, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Tabungkan Sisa ${formatRp(remainingToday)}")
+                            Text("Amankan Sisa ${formatRp(remainingToday)} ke Tabungan", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
         }
 
-        // 2. WALLET BALANCE + QUICK ACTIONS
+        // 4. 7-DAY SPENDING CHART (CANVAS)
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text("Saldo Dompet", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    Text(formatRp(balance, state.hideBalance), fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Masuk bulan ini", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(formatRp(monthIncome, state.hideBalance), fontWeight = FontWeight.SemiBold, color = EmeraldPrimary)
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Keluar bulan ini", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(formatRp(monthExpense, state.hideBalance), fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        FilledTonalButton(
-                            onClick = { onQuickAdd(TxType.INCOME) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Rounded.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Pemasukan")
-                        }
-                        Button(
-                            onClick = { onQuickAdd(TxType.EXPENSE) },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Rounded.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Pengeluaran")
-                        }
-                    }
+            val days = remember(state.transactions) {
+                (6 downTo 0).map { ago ->
+                    val iso = offsetDateISO(ago)
+                    val total = state.transactions.filter { it.type == TxType.EXPENSE && it.date == iso }.sumOf { it.amount }
+                    val lbl = if (ago == 0) "Ini" else SimpleDateFormat("EE", Locale("id", "ID")).format(Date(System.currentTimeMillis() - ago * 86_400_000L)).take(2)
+                    Triple(lbl, total, ago == 0)
                 }
             }
-        }
+            val weekSum = days.sumOf { it.second }
+            val maxVal = days.maxOfOrNull { it.second }?.coerceAtLeast(1L) ?: 1L
+            val barPrimary = MaterialTheme.colorScheme.primary
+            val barTrack = MaterialTheme.colorScheme.surfaceVariant
 
-        // 3. PRIMARY SAVINGS GOAL
-        item {
-            val goal = state.goals.firstOrNull()
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Target Tabungan Utama", fontWeight = FontWeight.SemiBold)
-                        TextButton(onClick = { onOpenTab(2) }) { Text("Kelola") }
+                        Text("Pengeluaran 7 Hari", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(
+                            formatRp(weekSum, state.hideBalance),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Canvas(modifier = Modifier.fillMaxWidth().height(84.dp)) {
+                        val slotW = size.width / 7f
+                        val barW = slotW * 0.44f
+                        days.forEachIndexed { idx, (_, amt, isToday) ->
+                            val frac = (amt.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                            val h = (size.height * frac).coerceAtLeast(8f)
+                            val x = idx * slotW + (slotW - barW) / 2f
+                            drawRoundRect(
+                                color = if (amt == 0L) barTrack else if (isToday) barPrimary else barPrimary.copy(alpha = 0.55f),
+                                topLeft = Offset(x, size.height - h),
+                                size = Size(barW, h),
+                                cornerRadius = CornerRadius(12f, 12f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        days.forEach { (lbl, _, isToday) ->
+                            Text(
+                                lbl,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                fontSize = 11.sp,
+                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isToday) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. PRIMARY SAVINGS GOAL
+        item {
+            val goal = state.goals.firstOrNull()
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Target Utama", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        TextButton(onClick = { onOpenTab(2) }) { Text("Semua Target") }
                     }
                     if (goal == null) {
                         Text(
@@ -770,7 +904,9 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        val pct = ((goal.saved.toFloat() / goal.target.coerceAtLeast(1L)) * 100).toInt().coerceIn(0, 100)
+                        val rawGoalProg = (goal.saved.toFloat() / goal.target.coerceAtLeast(1L)).coerceIn(0f, 1f)
+                        val animGoalProg by animateFloatAsState(targetValue = rawGoalProg, animationSpec = tween(500), label = "goal_prog")
+                        val pct = (rawGoalProg * 100).toInt()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -778,16 +914,16 @@ fun HomeScreen(
                             Text(goal.name, fontWeight = FontWeight.Medium)
                             Text("$pct%", fontWeight = FontWeight.Bold, color = EmeraldPrimary)
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
-                            progress = { pct / 100f },
-                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(999.dp)),
+                            progress = { animGoalProg },
+                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(999.dp)),
                             color = EmeraldPrimary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            "${formatRp(goal.saved, state.hideBalance)} dari ${formatRp(goal.target)}",
+                            "${formatRp(goal.saved, state.hideBalance)} dari ${formatRp(goal.target)} • Hemat masak: ${formatRp(state.cookSavedTotal, state.hideBalance)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -796,71 +932,25 @@ fun HomeScreen(
             }
         }
 
-        // 4. COOKING CHALLENGE
+        // 6. RECENT ACTIVITY
         item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Masak Malam Ini", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Total hemat ${formatRp(state.cookSavedTotal, state.hideBalance)}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = EmeraldPrimary
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Jangan jajan malam! Masak sendiri di rumah dan simpan Rp 25.000.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    FilledTonalButton(
-                        onClick = onCookToday,
-                        enabled = !cookedToday,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            if (cookedToday) Icons.Rounded.CheckCircle else Icons.Rounded.Restaurant,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (cookedToday) "Sudah Masak Hari Ini" else "Saya Masak Hari Ini (+Hemat Rp 25rb)")
-                    }
-                }
-            }
-        }
-
-        // 5. RECENT ACTIVITY
-        item {
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Aktivitas Terakhir", fontWeight = FontWeight.SemiBold)
+                        Text("Aktivitas Terakhir", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                         TextButton(onClick = { onOpenTab(1) }) { Text("Semua") }
                     }
                     val recent = state.transactions.sortedByDescending { it.createdAt }.take(5)
                     if (recent.isEmpty()) {
                         Text(
-                            "Belum ada transaksi. Tekan + untuk mencatat.",
+                            "Belum ada transaksi. Ketuk + untuk mencatat.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 8.dp)
@@ -869,7 +959,7 @@ fun HomeScreen(
                         recent.forEachIndexed { idx, tx ->
                             TxRow(tx = tx, masked = state.hideBalance, onDelete = null)
                             if (idx < recent.lastIndex) {
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                             }
                         }
                     }
