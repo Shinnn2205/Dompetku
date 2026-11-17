@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val runNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
+
 android {
     namespace = "com.dompetku.app"
     compileSdk = 34
@@ -11,13 +13,26 @@ android {
         applicationId = "com.dompetku.v2"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 10 + runNum
+        versionName = "2.1.$runNum"
+    }
+
+    signingConfigs {
+        create("dompetku") {
+            storeFile = file("dompetku.jks")
+            storePassword = System.getenv("KEYSTORE_PASS") ?: "dompetku123"
+            keyAlias = "dompetku"
+            keyPassword = System.getenv("KEY_PASS") ?: "dompetku123"
+        }
     }
 
     buildTypes {
-        release {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("dompetku")
+        }
+        getByName("release") {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("dompetku")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

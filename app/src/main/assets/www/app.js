@@ -456,7 +456,7 @@
         return `
           <div class="wk-col" title="${d.label}: ${formatRupiah(d.total)}">
             <div class="wk-bar-wrap">
-              <div class="wk-bar ${d.isToday ? 'today' : ''}" style="height:${hPct}%"></div>
+              <div class="wk-bar ${d.total > 0 ? 'has-val' : ''} ${d.isToday ? 'today' : ''}" style="height:${hPct}%"></div>
             </div>
             <span class="wk-label">${d.label}</span>
           </div>
