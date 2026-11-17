@@ -14,6 +14,21 @@ import java.util.Calendar
 class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_MARK_COOKED) {
+            val state = FinanceRepo.load(context)
+            val today = todayISO()
+            if (today !in state.cookDays) {
+                val updated = state.copy(
+                    cookDays = state.cookDays + today,
+                    cookSavedTotal = state.cookSavedTotal + 25_000L
+                )
+                FinanceRepo.save(context, updated)
+                updateOngoingBudgetNotification(context, updated)
+                showNotification(context, 778, "Mantap! Sudah Masak Hari Ini", "Streak masak bertambah & hemat Rp 25.000!")
+            }
+            return
+        }
+
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             if (prefs.getBoolean(KEY_ENABLED, true)) {
@@ -37,6 +52,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val CHANNEL_ID = "dompetku_reminders"
         const val CHANNEL_ONGOING_ID = "dompetku_ongoing_budget"
         const val ONGOING_ID = 777
+        const val ACTION_MARK_COOKED = "com.dompetku.app.ACTION_MARK_COOKED"
         const val PREFS_NAME = "dompetku_notif_prefs"
         const val KEY_ENABLED = "reminders_enabled"
         const val EXTRA_TITLE = "extra_title"
@@ -101,12 +117,21 @@ class ReminderReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val cookIntent = Intent(context, ReminderReceiver::class.java).apply {
+                action = ACTION_MARK_COOKED
+            }
+            val pendingCook = PendingIntent.getBroadcast(
+                context, 779, cookIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             val notif = NotificationCompat.Builder(context, CHANNEL_ONGOING_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_today)
                 .setContentTitle(title)
                 .setContentText(sub)
                 .setOngoing(true)
                 .setSilent(true)
+                .addAction(0, "Saya Masak Hari Ini", pendingCook)
                 .setContentIntent(pendingOpen)
                 .build()
 
