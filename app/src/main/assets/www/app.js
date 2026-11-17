@@ -59,7 +59,7 @@
     theme: 'dark',
     hideBalance: false,
     pin: null,
-    dailyLimit: 0,
+    dailyLimit: 20000,
     monthlyLimit: 0,
     transactions: [],
     goals: [],
@@ -68,8 +68,19 @@
     cookSavedTotal: 0,
     bans: [
       {
+        id: 'ban_default_lunch',
+        name: 'Makan Siang Maks Rp 17.000',
+        keywords: ['siang', 'makan siang', 'nasi', 'warteg', 'ayam', 'mie'],
+        category: 'Makan & Minum',
+        mode: 'limit',
+        dailyMax: 17000,
+        active: true,
+        createdAt: todayISO(),
+        lastBrokenDate: null
+      },
+      {
         id: 'ban_default_1',
-        name: 'Kurangi Jajan Minuman Kekinian',
+        name: 'Stop Jajan & Minuman Kekinian',
         keywords: ['boba', 'kopi', 'es', 'jajan', 'snack', 'cimol', 'seblak'],
         category: 'Jajan & Minuman',
         mode: 'strict',

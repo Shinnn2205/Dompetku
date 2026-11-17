@@ -84,14 +84,14 @@ class ReminderReceiver : BroadcastReceiver() {
             prefs.edit().putBoolean(KEY_ENABLED, true).apply()
 
             scheduleAlarm(
-                context, 101, 10, 45,
-                "🍳 Waktunya Masak Sendiri!",
-                "Tahan pesan GoFood/ShopeeFood hari ini. Masak sendiri lebih sehat dan bikin target tabunganmu cepat tercapai!"
+                context, 101, 11, 30,
+                "🍱 Makan Siang Hemat!",
+                "Boleh beli makan siang, tapi ingat maksimal Rp 17.000 ya! Total jatah harianmu Rp 20.000."
             )
             scheduleAlarm(
                 context, 102, 16, 30,
                 "🧋 Awas Jam Rawan Jajan!",
-                "Ingat larangan jajanmu di DompetKu. Pertahankan streak hematmu hari ini!"
+                "Total jatahmu hari ini maksimal Rp 20.000. Tahan jajan sore!"
             )
             scheduleAlarm(
                 context, 104, 18, 0,
