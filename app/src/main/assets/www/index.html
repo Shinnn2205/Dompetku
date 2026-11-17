@@ -3,53 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#10b981" />
+  <meta name="theme-color" content="#059669" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="DompetKu" />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <link rel="apple-touch-icon" href="./icon.svg" />
-  <title>DompetKu — Atur Keuangan &amp; Larangan Jajan</title>
+  <title>DompetKu — Smart Money &amp; Anti-Jajan</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
+  <!-- PIN LOCK OVERLAY -->
+  <div class="pin-overlay" id="pin-overlay" aria-hidden="true">
+    <div class="pin-box">
+      <div class="pin-logo">🔐</div>
+      <h2 id="pin-prompt-title">Masukkan PIN DompetKu</h2>
+      <p class="pin-sub" id="pin-prompt-sub">Lindungi catatan keuanganmu</p>
+      <div class="pin-dots" id="pin-dots">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <p class="pin-error" id="pin-error"></p>
+      <div class="pin-keypad" id="pin-keypad">
+        <button type="button" data-key="1">1</button>
+        <button type="button" data-key="2">2</button>
+        <button type="button" data-key="3">3</button>
+        <button type="button" data-key="4">4</button>
+        <button type="button" data-key="5">5</button>
+        <button type="button" data-key="6">6</button>
+        <button type="button" data-key="7">7</button>
+        <button type="button" data-key="8">8</button>
+        <button type="button" data-key="9">9</button>
+        <button type="button" class="pin-fn" data-key="clear">C</button>
+        <button type="button" data-key="0">0</button>
+        <button type="button" class="pin-fn" data-key="del">⌫</button>
+      </div>
+    </div>
+  </div>
+
   <div class="app-shell">
     <!-- Top Header -->
     <header class="app-header">
       <div class="header-brand">
-        <div class="brand-logo">💳</div>
+        <div class="brand-logo">💎</div>
         <div>
-          <h1 class="brand-title">DompetKu</h1>
+          <div class="brand-row">
+            <h1 class="brand-title">DompetKu</h1>
+            <span class="rank-pill" id="user-rank">🌱 Pemula</span>
+          </div>
           <p class="brand-sub" id="header-date">Memuat...</p>
         </div>
       </div>
-      <button class="icon-btn" id="btn-theme" aria-label="Ganti Tema" title="Ganti Tema">🌙</button>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-privacy" aria-label="Sembunyikan Saldo" title="Mode Privasi">👁️</button>
+        <button class="icon-btn" id="btn-theme" aria-label="Ganti Tema" title="Ganti Tema">🌙</button>
+        <button class="icon-btn" id="btn-open-settings" aria-label="Pengaturan &amp; Data" title="Pengaturan &amp; Data">⚙️</button>
+      </div>
     </header>
 
     <!-- Main Content Area -->
     <main class="app-main">
       <!-- TAB 1: BERANDA -->
       <section class="tab-view active" id="tab-home">
-        <!-- Balance Card -->
+        <!-- Hero Wallet Card -->
         <div class="balance-card">
+          <div class="balance-glow"></div>
           <div class="balance-top">
             <span class="balance-label">Total Saldo Tersedia</span>
-            <span class="storage-pill" title="Data tersimpan lokal di HP">💾 Lokal</span>
+            <span class="health-pill" id="health-pill">💚 Skor: 100</span>
           </div>
           <div class="balance-amount" id="home-balance">Rp 0</div>
           <div class="balance-stats">
             <div class="stat-item">
               <span class="stat-dot income"></span>
               <div>
-                <small>Pemasukan Bulan Ini</small>
+                <small>Masuk Bulan Ini</small>
                 <strong id="home-income">Rp 0</strong>
               </div>
             </div>
             <div class="stat-item">
               <span class="stat-dot expense"></span>
               <div>
-                <small>Pengeluaran Bulan Ini</small>
+                <small>Keluar Bulan Ini</small>
                 <strong id="home-expense">Rp 0</strong>
               </div>
             </div>
@@ -59,16 +94,22 @@
         <!-- Quick Actions -->
         <div class="quick-actions">
           <button class="action-btn income" id="btn-quick-income">
-            <span class="action-icon">➕</span>
-            <span>Catat Masuk</span>
+            <span class="action-icon-wrap income">⬇️</span>
+            <div>
+              <strong>Pemasukan</strong>
+              <small>Gaji / Bonus</small>
+            </div>
           </button>
           <button class="action-btn expense" id="btn-quick-expense">
-            <span class="action-icon">➖</span>
-            <span>Catat Keluar</span>
+            <span class="action-icon-wrap expense">⬆️</span>
+            <div>
+              <strong>Pengeluaran</strong>
+              <small>Belanja / Jajan</small>
+            </div>
           </button>
         </div>
 
-        <!-- Daily Limit Guard Card -->
+        <!-- Daily & Monthly Guard Card -->
         <div class="card" id="daily-guard-card">
           <div class="card-header">
             <h3>🛡️ Jatah Pengeluaran Hari Ini</h3>
@@ -84,28 +125,46 @@
           <p class="hint-text" id="daily-guard-hint">Atur batas harian di menu Larangan agar lebih hemat.</p>
         </div>
 
+        <!-- 7-Day Spending Chart + Donut -->
+        <div class="card">
+          <div class="card-header">
+            <h3>📈 Tren Pengeluaran 7 Hari</h3>
+            <span class="hint-inline" id="week-total-label">Rp 0</span>
+          </div>
+          <div id="weekly-chart" class="weekly-chart"></div>
+        </div>
+
+        <!-- Category Donut Breakdown -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🍩 Distribusi Bulan Ini</h3>
+          </div>
+          <div id="home-breakdown" class="breakdown-wrap"></div>
+        </div>
+
         <!-- Active Larangan Jajan Summary -->
         <div class="card">
           <div class="card-header">
-            <h3>🚫 Status Larangan Jajan</h3>
-            <button class="link-btn" data-goto="bans">Kelola</button>
+            <h3>🚫 Streak Larangan Jajan</h3>
+            <button class="link-btn" data-goto="bans">Kelola &rarr;</button>
           </div>
           <div id="home-bans-preview" class="bans-preview-list"></div>
         </div>
 
-        <!-- Category Breakdown -->
+        <!-- Recurring Bills Preview -->
         <div class="card">
           <div class="card-header">
-            <h3>📊 Pengeluaran Bulan Ini</h3>
+            <h3>📅 Tagihan Rutin Bulan Ini</h3>
+            <button class="link-btn" id="btn-add-bill-home">+ Tagihan</button>
           </div>
-          <div id="home-breakdown" class="breakdown-list"></div>
+          <div id="home-bills-list" class="tx-list"></div>
         </div>
 
         <!-- Recent Transactions -->
         <div class="card">
           <div class="card-header">
             <h3>🕒 Transaksi Terakhir</h3>
-            <button class="link-btn" data-goto="history">Lihat Semua</button>
+            <button class="link-btn" data-goto="history">Semua &rarr;</button>
           </div>
           <div id="home-recent" class="tx-list"></div>
         </div>
@@ -139,8 +198,11 @@
         </div>
 
         <div class="summary-banner">
-          <span>Total Terkumpul di Semua Target</span>
-          <strong id="savings-total">Rp 0</strong>
+          <div>
+            <span>Total Terkumpul</span>
+            <strong id="savings-total">Rp 0</strong>
+          </div>
+          <span class="summary-emoji">🏆</span>
         </div>
 
         <div id="goals-list" class="goals-grid"></div>
@@ -161,19 +223,27 @@
           <div class="form-grid-2">
             <div class="form-group">
               <label for="input-daily-limit">Batas Harian (Rp)</label>
-              <input type="number" id="input-daily-limit" class="input" placeholder="Contoh: 50000" min="0" inputmode="numeric" />
+              <input type="number" id="input-daily-limit" class="input" placeholder="50000" min="0" inputmode="numeric" />
             </div>
             <div class="form-group">
               <label for="input-monthly-limit">Batas Bulanan (Rp)</label>
-              <input type="number" id="input-monthly-limit" class="input" placeholder="Contoh: 1500000" min="0" inputmode="numeric" />
+              <input type="number" id="input-monthly-limit" class="input" placeholder="1500000" min="0" inputmode="numeric" />
             </div>
           </div>
           <button class="btn-secondary btn-full" id="btn-save-limits">Simpan Batas Pengeluaran</button>
         </div>
 
-        <div class="info-banner">
-          <span>💡</span>
-          <p>Setiap kali kamu mencatat pengeluaran yang cocok dengan daftar larangan jajan, aplikasi akan mengingatkan dan menjaga streak hematmu!</p>
+        <!-- Quick Presets -->
+        <div class="card">
+          <div class="card-header">
+            <h3>⚡ Tambah Cepat Larangan Populer</h3>
+          </div>
+          <div class="preset-chips" id="ban-presets">
+            <button type="button" class="preset-chip" data-preset="boba">🧋 Stop Boba &amp; Kopi</button>
+            <button type="button" class="preset-chip" data-preset="checkout">🛒 No Checkout Tengah Malam</button>
+            <button type="button" class="preset-chip" data-preset="snack">🍟 Puasa Gorengan &amp; Snack</button>
+            <button type="button" class="preset-chip" data-preset="game">🎮 No Top-Up Game</button>
+          </div>
         </div>
 
         <div id="bans-list" class="bans-list"></div>
@@ -187,11 +257,23 @@
 
         <div class="card">
           <div class="card-header">
+            <h3>🔐 Keamanan Kunci PIN</h3>
+            <span class="badge" id="pin-status-badge">Nonaktif</span>
+          </div>
+          <p class="body-text">Pasang PIN 4 digit agar hanya kamu yang bisa membuka catatan keuanganmu.</p>
+          <div class="btn-stack">
+            <button class="btn-secondary btn-full" id="btn-setup-pin">Atur / Ubah PIN (4 Digit)</button>
+            <button class="btn-outline btn-full" id="btn-disable-pin" style="display:none;">Nonaktifkan PIN</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <h3>💾 Penyimpanan Permanen di HP</h3>
-            <span class="badge badge-success">Aktif</span>
+            <span class="badge badge-success">Offline Lokal</span>
           </div>
           <p class="body-text">
-            Semua catatan transaksi, target tabungan, dan larangan jajan disimpan langsung di memori lokal browser HP kamu (tidak dikirim ke server mana pun).
+            Semua data tersimpan permanen di memori internal aplikasi pada HP kamu dan tidak dikirim ke server mana pun.
           </p>
           <div class="storage-stats" id="storage-stats">
             <span>Transaksi: <strong id="stat-tx-count">0</strong></span>
@@ -204,9 +286,9 @@
           <div class="card-header">
             <h3>📦 Cadangkan &amp; Pulihkan</h3>
           </div>
-          <p class="body-text">Simpan file cadangan agar data aman jika ganti HP atau membersihkan cache browser.</p>
+          <p class="body-text">Simpan file cadangan agar data aman jika ganti HP.</p>
           <div class="btn-stack">
-            <button class="btn-secondary btn-full" id="btn-export-data">⬇️ Unduh Cadangan (JSON)</button>
+            <button class="btn-secondary btn-full" id="btn-export-data">⬇️ Simpan / Bagikan Cadangan (JSON)</button>
             <label class="btn-outline btn-full file-btn">
               ⬆️ Pulihkan dari File (JSON)
               <input type="file" id="input-import-data" accept="application/json,.json" hidden />
@@ -224,20 +306,10 @@
             <button class="btn-danger btn-full" id="btn-clear-all">Hapus Semua Data (Reset Total)</button>
           </div>
         </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h3>📱 Cara Pasang di Layar Utama HP</h3>
-          </div>
-          <ol class="install-steps">
-            <li><strong>Android (Chrome):</strong> Ketuk ikon menu ⋮ di kanan atas &rarr; pilih <em>"Tambahkan ke Layar utama"</em> / <em>"Install app"</em>.</li>
-            <li><strong>iPhone (Safari):</strong> Ketuk ikon Bagikan (kotak dengan panah ke atas) &rarr; pilih <em>"Add to Home Screen"</em>.</li>
-          </ol>
-        </div>
       </section>
     </main>
 
-    <!-- Bottom Navigation -->
+    <!-- Bottom Navigation with Center FAB -->
     <nav class="bottom-nav" aria-label="Navigasi Utama">
       <button class="nav-item active" data-tab="home">
         <span class="nav-icon">🏠</span>
@@ -247,6 +319,9 @@
         <span class="nav-icon">📜</span>
         <span class="nav-label">Riwayat</span>
       </button>
+      <button class="nav-fab" id="btn-nav-fab" aria-label="Catat Transaksi">
+        <span>＋</span>
+      </button>
       <button class="nav-item" data-tab="savings">
         <span class="nav-icon">🎯</span>
         <span class="nav-label">Tabungan</span>
@@ -255,11 +330,8 @@
         <span class="nav-icon">🚫</span>
         <span class="nav-label">Larangan</span>
       </button>
-      <button class="nav-item" data-tab="settings">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">Data</span>
-      </button>
     </nav>
+    <!-- Floating Settings shortcut or 5th tab? Let's keep Settings accessible from top header too! -->
   </div>
 
   <!-- MODAL: CATAT TRANSAKSI -->
@@ -410,7 +482,7 @@
             <option value="Jajan &amp; Minuman">Jajan &amp; Minuman</option>
             <option value="Belanja Online">Belanja Online</option>
             <option value="Hiburan &amp; Game">Hiburan &amp; Game</option>
-            <option value="Makan di Luar">Makan di Luar</option>
+            <option value="Makan &amp; Minum">Makan &amp; Minum</option>
           </select>
         </div>
         <div class="form-group">
@@ -425,6 +497,31 @@
           <input type="number" id="ban-daily-max" class="input" placeholder="15000" min="0" inputmode="numeric" />
         </div>
         <button type="submit" class="btn-primary btn-full">Aktifkan Larangan</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TAMBAH TAGIHAN RUTIN -->
+  <div class="modal-backdrop" id="modal-bill" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>Tambah Tagihan Rutin</h3>
+        <button class="close-btn" data-close="modal-bill">&times;</button>
+      </div>
+      <form id="form-bill">
+        <div class="form-group">
+          <label for="bill-name">Nama Tagihan</label>
+          <input type="text" id="bill-name" class="input" placeholder="Misal: Kos, Wi-Fi, Listrik, Kuota" required maxlength="40" />
+        </div>
+        <div class="form-group">
+          <label for="bill-amount">Nominal (Rp)</label>
+          <input type="number" id="bill-amount" class="input" placeholder="250000" min="1" required inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label for="bill-due">Tanggal Jatuh Tempo (1–31)</label>
+          <input type="number" id="bill-due" class="input" placeholder="5" min="1" max="31" required inputmode="numeric" />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Simpan Tagihan</button>
       </form>
     </div>
   </div>

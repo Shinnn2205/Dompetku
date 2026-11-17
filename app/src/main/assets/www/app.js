@@ -22,12 +22,48 @@
     ]
   };
 
+  const DONUT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'];
+
+  const BAN_PRESETS = {
+    boba: {
+      name: 'Stop Boba & Kopi Kekinian',
+      keywords: ['boba', 'kopi', 'coffee', 'matcha', 'latte', 'es'],
+      category: 'Jajan & Minuman',
+      mode: 'strict',
+      dailyMax: 0
+    },
+    checkout: {
+      name: 'No Checkout Tengah Malam',
+      keywords: ['shopee', 'tokopedia', 'lazada', 'tiktok', 'checkout', 'paket'],
+      category: 'Belanja Online',
+      mode: 'strict',
+      dailyMax: 0
+    },
+    snack: {
+      name: 'Puasa Gorengan & Snack',
+      keywords: ['gorengan', 'snack', 'camilan', 'keripik', 'seblak', 'cilok', 'cimol'],
+      category: 'Jajan & Minuman',
+      mode: 'limit',
+      dailyMax: 10000
+    },
+    game: {
+      name: 'No Top-Up Game Impulsif',
+      keywords: ['topup', 'top up', 'diamond', 'uc', 'voucher', 'skin', 'game'],
+      category: 'Hiburan & Game',
+      mode: 'strict',
+      dailyMax: 0
+    }
+  };
+
   const DEFAULT_STATE = () => ({
-    theme: 'light',
+    theme: 'dark',
+    hideBalance: false,
+    pin: null,
     dailyLimit: 0,
     monthlyLimit: 0,
     transactions: [],
     goals: [],
+    bills: [],
     bans: [
       {
         id: 'ban_default_1',
@@ -48,9 +84,22 @@
   let pendingTx = null;
   let pendingConfirmAction = null;
 
+  // PIN state
+  let pinMode = 'unlock'; // 'unlock' | 'setup'
+  let pinBuffer = '';
+
   // --- Utilities ---
   function todayISO() {
     const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function offsetDateISO(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -61,7 +110,8 @@
     return todayISO().slice(0, 7);
   }
 
-  function formatRupiah(num) {
+  function formatRupiah(num, maskable = false) {
+    if (maskable && state.hideBalance) return 'Rp ••••••';
     const n = Number(num) || 0;
     const sign = n < 0 ? '-' : '';
     return `${sign}Rp ${Math.abs(n).toLocaleString('id-ID')}`;
@@ -123,6 +173,7 @@
         ...parsed,
         transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
         goals: Array.isArray(parsed.goals) ? parsed.goals : [],
+        bills: Array.isArray(parsed.bills) ? parsed.bills : [],
         bans: Array.isArray(parsed.bans) ? parsed.bans : []
       };
     } catch {
@@ -133,7 +184,7 @@
   function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
+    } catch {
       showToast('Gagal menyimpan: memori penuh!');
     }
   }
@@ -143,16 +194,79 @@
       try {
         await navigator.storage.persist();
       } catch {
-        // Ignore if unsupported
+        // Ignore
       }
     }
   }
 
-  // --- Theme ---
+  // --- Theme & Privacy ---
   function applyTheme() {
     const isDark = state.theme === 'dark';
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     document.getElementById('btn-theme').textContent = isDark ? '☀️' : '🌙';
+  }
+
+  function applyPrivacyBtn() {
+    document.getElementById('btn-privacy').textContent = state.hideBalance ? '🙈' : '👁️';
+  }
+
+  // --- PIN Lock ---
+  function openPinScreen(mode) {
+    pinMode = mode;
+    pinBuffer = '';
+    document.getElementById('pin-error').textContent = '';
+    document.getElementById('pin-prompt-title').textContent =
+      mode === 'setup' ? 'Buat PIN Baru (4 Digit)' : 'Masukkan PIN DompetKu';
+    document.getElementById('pin-prompt-sub').textContent =
+      mode === 'setup' ? 'Pilih 4 angka yang mudah kamu ingat' : 'Lindungi catatan keuanganmu';
+    updatePinDots();
+    document.getElementById('pin-overlay').classList.add('open');
+  }
+
+  function closePinScreen() {
+    document.getElementById('pin-overlay').classList.remove('open');
+  }
+
+  function updatePinDots() {
+    const dots = document.querySelectorAll('#pin-dots span');
+    dots.forEach((d, idx) => d.classList.toggle('filled', idx < pinBuffer.length));
+  }
+
+  function handlePinKey(key) {
+    if (key === 'clear') {
+      pinBuffer = '';
+      document.getElementById('pin-error').textContent = '';
+      updatePinDots();
+      return;
+    }
+    if (key === 'del') {
+      pinBuffer = pinBuffer.slice(0, -1);
+      updatePinDots();
+      return;
+    }
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += key;
+    updatePinDots();
+
+    if (pinBuffer.length === 4) {
+      setTimeout(() => {
+        if (pinMode === 'setup') {
+          state.pin = pinBuffer;
+          saveState();
+          closePinScreen();
+          renderSettings();
+          showToast('PIN 4 digit berhasil diaktifkan! 🔐');
+        } else {
+          if (pinBuffer === state.pin) {
+            closePinScreen();
+          } else {
+            document.getElementById('pin-error').textContent = 'PIN salah, coba lagi.';
+            pinBuffer = '';
+            updatePinDots();
+          }
+        }
+      }, 120);
+    }
   }
 
   // --- Navigation ---
@@ -222,6 +336,29 @@
     return daysBetween(ref, todayISO());
   }
 
+  function computeHealthScore() {
+    const { income, expense } = computeMonthTotals();
+    let score = 70;
+    if (income > 0) {
+      const ratio = (income - expense) / income;
+      score += Math.round(Math.max(-30, Math.min(20, ratio * 25)));
+    }
+    const maxStreak = state.bans.reduce((m, b) => Math.max(m, getBanStreak(b)), 0);
+    score += Math.min(10, maxStreak);
+    if (state.dailyLimit > 0 && computeTodayExpense() > state.dailyLimit) {
+      score -= 15;
+    }
+    return Math.max(10, Math.min(100, score));
+  }
+
+  function getUserRank(score) {
+    const totalSaved = state.goals.reduce((s, g) => s + (g.saved || 0), 0);
+    if (score >= 90 && totalSaved >= 500000) return '👑 Sultan Bijak';
+    if (score >= 80) return '🔥 Anti-Jajan Pro';
+    if (score >= 65) return '🛡️ Pejuang Hemat';
+    return '🌱 Pemula Hemat';
+  }
+
   function doesTxMatchBan(tx, ban) {
     if (!ban.active || tx.type !== 'expense') return false;
     if (ban.category && tx.category === ban.category) return true;
@@ -265,22 +402,152 @@
     document.getElementById('header-date').textContent = new Date().toLocaleDateString('id-ID', {
       weekday: 'long',
       day: 'numeric',
-      month: 'long',
+      month: 'short',
       year: 'numeric'
     });
+    const score = computeHealthScore();
+    document.getElementById('user-rank').textContent = getUserRank(score);
+  }
+
+  function renderWeeklyChart() {
+    const container = document.getElementById('weekly-chart');
+    const days = [];
+    let weekTotal = 0;
+    for (let i = 6; i >= 0; i--) {
+      const iso = offsetDateISO(i);
+      const total = state.transactions
+        .filter((t) => t.type === 'expense' && t.date === iso)
+        .reduce((s, t) => s + t.amount, 0);
+      weekTotal += total;
+      const d = new Date(iso + 'T00:00:00');
+      const label = i === 0 ? 'Hari Ini' : d.toLocaleDateString('id-ID', { weekday: 'short' }).slice(0, 3);
+      days.push({ label, total, isToday: i === 0 });
+    }
+    document.getElementById('week-total-label').textContent = formatRupiah(weekTotal, true);
+    const maxVal = Math.max(1, ...days.map((d) => d.total));
+
+    container.innerHTML = days
+      .map((d) => {
+        const hPct = d.total > 0 ? Math.max(10, Math.round((d.total / maxVal) * 100)) : 4;
+        return `
+          <div class="wk-col" title="${d.label}: ${formatRupiah(d.total)}">
+            <div class="wk-bar-wrap">
+              <div class="wk-bar ${d.isToday ? 'today' : ''}" style="height:${hPct}%"></div>
+            </div>
+            <span class="wk-label">${d.label}</span>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  function renderDonutBreakdown() {
+    const el = document.getElementById('home-breakdown');
+    const prefix = currentMonthPrefix();
+    const catMap = {};
+    let totalMonthExp = 0;
+    for (const tx of state.transactions) {
+      if (tx.type === 'expense' && tx.date.startsWith(prefix)) {
+        catMap[tx.category] = (catMap[tx.category] || 0) + tx.amount;
+        totalMonthExp += tx.amount;
+      }
+    }
+    const entries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      el.innerHTML = `<div class="empty-state">Belum ada pengeluaran bulan ini.</div>`;
+      return;
+    }
+
+    const r = 38;
+    const circ = 2 * Math.PI * r;
+    let offset = 0;
+    const segments = entries
+      .map(([, amt], i) => {
+        const frac = amt / totalMonthExp;
+        const dash = frac * circ;
+        const color = DONUT_COLORS[i % DONUT_COLORS.length];
+        const seg = `<circle cx="52" cy="52" r="${r}" fill="transparent" stroke="${color}" stroke-width="14" stroke-dasharray="${dash} ${circ - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 52 52)"/>`;
+        offset += dash;
+        return seg;
+      })
+      .join('');
+
+    const legend = entries
+      .slice(0, 5)
+      .map(([cat, amt], i) => {
+        const pct = Math.round((amt / totalMonthExp) * 100);
+        const color = DONUT_COLORS[i % DONUT_COLORS.length];
+        return `
+          <div class="legend-item">
+            <div class="legend-left">
+              <span class="legend-dot" style="background:${color}"></span>
+              <span class="legend-name">${escapeHTML(cat)}</span>
+            </div>
+            <strong>${pct}%</strong>
+          </div>
+        `;
+      })
+      .join('');
+
+    el.innerHTML = `
+      <div class="donut-row">
+        <svg class="donut-svg" viewBox="0 0 104 104">
+          ${segments}
+          <text x="52" y="55" text-anchor="middle" fill="currentColor" font-size="11" font-weight="700">${entries.length} Kat</text>
+        </svg>
+        <div class="donut-legend">${legend}</div>
+      </div>
+    `;
+  }
+
+  function renderBills() {
+    const el = document.getElementById('home-bills-list');
+    if (state.bills.length === 0) {
+      el.innerHTML = `<div class="empty-state">Belum ada tagihan rutin (kos, wifi, listrik).</div>`;
+      return;
+    }
+    const month = currentMonthPrefix();
+    el.innerHTML = state.bills
+      .map((b) => {
+        const paid = b.lastPaidMonth === month;
+        return `
+          <div class="tx-item">
+            <div class="tx-left">
+              <div class="tx-icon">⚡</div>
+              <div class="tx-info">
+                <div class="tx-title">${escapeHTML(b.name)}</div>
+                <div class="tx-meta">Jatuh tempo tgl ${b.dueDay} • ${formatRupiah(b.amount)}</div>
+              </div>
+            </div>
+            <div class="tx-right">
+              ${
+                paid
+                  ? `<span class="badge badge-success">Lunas</span>`
+                  : `<button class="btn-primary btn-sm" data-pay-bill="${b.id}">Bayar</button>`
+              }
+              <button class="del-mini-btn" data-del-bill="${b.id}" title="Hapus">🗑️</button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
   }
 
   function renderHome() {
     const balance = computeBalance();
     const { income, expense } = computeMonthTotals();
-    document.getElementById('home-balance').textContent = formatRupiah(balance);
-    document.getElementById('home-income').textContent = formatRupiah(income);
-    document.getElementById('home-expense').textContent = formatRupiah(expense);
+    const score = computeHealthScore();
+
+    document.getElementById('home-balance').textContent = formatRupiah(balance, true);
+    document.getElementById('home-income').textContent = formatRupiah(income, true);
+    document.getElementById('home-expense').textContent = formatRupiah(expense, true);
+    document.getElementById('health-pill').textContent =
+      score >= 80 ? `💚 Skor: ${score}` : score >= 55 ? `💛 Skor: ${score}` : `❤️ Skor: ${score}`;
 
     // Daily Guard
     const todaySpent = computeTodayExpense();
     const limit = state.dailyLimit || 0;
-    document.getElementById('daily-spent').textContent = formatRupiah(todaySpent);
+    document.getElementById('daily-spent').textContent = formatRupiah(todaySpent, true);
     document.getElementById('daily-limit-text').textContent = limit > 0 ? formatRupiah(limit) : 'Belum diatur';
 
     const badge = document.getElementById('daily-guard-badge');
@@ -315,6 +582,10 @@
       hint.textContent = 'Atur batas harian di menu Larangan agar pengeluaran lebih terkontrol.';
     }
 
+    renderWeeklyChart();
+    renderDonutBreakdown();
+    renderBills();
+
     // Active Bans Preview
     const bansPreview = document.getElementById('home-bans-preview');
     const activeBans = state.bans.filter((b) => b.active);
@@ -341,46 +612,13 @@
         .join('');
     }
 
-    // Category Breakdown (Month)
-    const breakdownEl = document.getElementById('home-breakdown');
-    const prefix = currentMonthPrefix();
-    const catMap = {};
-    let totalMonthExp = 0;
-    for (const tx of state.transactions) {
-      if (tx.type === 'expense' && tx.date.startsWith(prefix)) {
-        catMap[tx.category] = (catMap[tx.category] || 0) + tx.amount;
-        totalMonthExp += tx.amount;
-      }
-    }
-    const entries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-    if (entries.length === 0) {
-      breakdownEl.innerHTML = `<div class="empty-state">Belum ada pengeluaran bulan ini.</div>`;
-    } else {
-      breakdownEl.innerHTML = entries
-        .map(([cat, amt]) => {
-          const pct = Math.round((amt / totalMonthExp) * 100);
-          return `
-            <div class="breakdown-row">
-              <div class="breakdown-head">
-                <span>${getCategoryIcon('expense', cat)} ${escapeHTML(cat)}</span>
-                <strong>${formatRupiah(amt)} (${pct}%)</strong>
-              </div>
-              <div class="progress-track" style="height:7px;margin:2px 0;">
-                <div class="progress-fill" style="width:${pct}%"></div>
-              </div>
-            </div>
-          `;
-        })
-        .join('');
-    }
-
     // Recent Transactions
     const recentEl = document.getElementById('home-recent');
     const recent = [...state.transactions]
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
       .slice(0, 5);
     if (recent.length === 0) {
-      recentEl.innerHTML = `<div class="empty-state">Belum ada transaksi. Yuk mulai catat keuanganmu!</div>`;
+      recentEl.innerHTML = `<div class="empty-state">Belum ada transaksi. Tekan ＋ di bawah untuk mulai mencatat!</div>`;
     } else {
       recentEl.innerHTML = recent.map((tx) => renderTxItemHTML(tx, false)).join('');
     }
@@ -401,7 +639,7 @@
           </div>
         </div>
         <div class="tx-right">
-          <span class="tx-amount ${tx.type}">${sign}${formatRupiah(tx.amount)}</span>
+          <span class="tx-amount ${tx.type}">${sign}${formatRupiah(tx.amount, true)}</span>
           ${showDelete ? `<button class="del-mini-btn" data-del-tx="${tx.id}" title="Hapus">🗑️</button>` : ''}
         </div>
       </div>
@@ -435,22 +673,20 @@
     }
 
     listEl.innerHTML = Object.entries(grouped)
-      .map(([date, items]) => {
-        return `
-          <div>
-            <div class="date-group-label">${formatDateID(date)}</div>
-            <div class="tx-list">
-              ${items.map((tx) => renderTxItemHTML(tx, true)).join('')}
-            </div>
+      .map(([date, items]) => `
+        <div>
+          <div class="date-group-label">${formatDateID(date)}</div>
+          <div class="tx-list">
+            ${items.map((tx) => renderTxItemHTML(tx, true)).join('')}
           </div>
-        `;
-      })
+        </div>
+      `)
       .join('');
   }
 
   function renderSavings() {
     const totalSaved = state.goals.reduce((s, g) => s + (g.saved || 0), 0);
-    document.getElementById('savings-total').textContent = formatRupiah(totalSaved);
+    document.getElementById('savings-total').textContent = formatRupiah(totalSaved, true);
 
     const listEl = document.getElementById('goals-list');
     if (state.goals.length === 0) {
@@ -483,7 +719,7 @@
               <div class="progress-fill" style="width:${pct}%"></div>
             </div>
             <div class="goal-amounts">
-              <span>Terkumpul: <strong>${formatRupiah(g.saved || 0)}</strong></span>
+              <span>Terkumpul: <strong>${formatRupiah(g.saved || 0, true)}</strong></span>
               <span>Target: <strong>${formatRupiah(g.target)}</strong></span>
             </div>
             <div class="goal-actions">
@@ -504,7 +740,7 @@
     if (state.bans.length === 0) {
       listEl.innerHTML = `
         <div class="card empty-state">
-          Belum ada larangan jajan. Tambahkan agar kamu terhindar dari jajan impulsif!
+          Belum ada larangan jajan. Pilih dari preset di atas atau tekan <strong>+ Larangan</strong>!
         </div>
       `;
       return;
@@ -541,10 +777,23 @@
     document.getElementById('stat-tx-count').textContent = state.transactions.length;
     document.getElementById('stat-goal-count').textContent = state.goals.length;
     document.getElementById('stat-ban-count').textContent = state.bans.length;
+
+    const pinBadge = document.getElementById('pin-status-badge');
+    const disableBtn = document.getElementById('btn-disable-pin');
+    if (state.pin) {
+      pinBadge.textContent = 'Aktif';
+      pinBadge.className = 'badge badge-success';
+      disableBtn.style.display = 'inline-flex';
+    } else {
+      pinBadge.textContent = 'Nonaktif';
+      pinBadge.className = 'badge';
+      disableBtn.style.display = 'none';
+    }
   }
 
   function renderAll() {
     applyTheme();
+    applyPrivacyBtn();
     renderHeader();
     renderHome();
     renderHistory();
@@ -593,12 +842,33 @@
     document.querySelectorAll('[data-goto]').forEach((btn) => {
       btn.addEventListener('click', () => switchTab(btn.dataset.goto));
     });
+    document.getElementById('btn-open-settings').addEventListener('click', () => switchTab('settings'));
+    document.getElementById('btn-nav-fab').addEventListener('click', () => openTxModal('expense'));
 
-    // Theme toggle
+    // Theme & Privacy toggle
     document.getElementById('btn-theme').addEventListener('click', () => {
       state.theme = state.theme === 'dark' ? 'light' : 'dark';
       saveState();
       applyTheme();
+    });
+    document.getElementById('btn-privacy').addEventListener('click', () => {
+      state.hideBalance = !state.hideBalance;
+      saveState();
+      renderAll();
+      showToast(state.hideBalance ? 'Saldo disembunyikan 🙈' : 'Saldo ditampilkan 👁️');
+    });
+
+    // PIN Keypad
+    document.getElementById('pin-keypad').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-key]');
+      if (btn) handlePinKey(btn.dataset.key);
+    });
+    document.getElementById('btn-setup-pin').addEventListener('click', () => openPinScreen('setup'));
+    document.getElementById('btn-disable-pin').addEventListener('click', () => {
+      state.pin = null;
+      saveState();
+      renderSettings();
+      showToast('Kunci PIN dinonaktifkan.');
     });
 
     // Modal close buttons & backdrop click
@@ -691,6 +961,57 @@
       commitTransaction(tx, warnings.violatedBans);
     });
 
+    // Recurring Bills
+    document.getElementById('btn-add-bill-home').addEventListener('click', () => {
+      document.getElementById('form-bill').reset();
+      openModal('modal-bill');
+    });
+
+    document.getElementById('form-bill').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('bill-name').value.trim();
+      const amount = Number(document.getElementById('bill-amount').value);
+      const dueDay = Math.min(31, Math.max(1, Number(document.getElementById('bill-due').value) || 1));
+      if (!name || !amount) return;
+
+      state.bills.push({ id: uid('bill'), name, amount, dueDay, lastPaidMonth: null });
+      saveState();
+      renderAll();
+      closeModal('modal-bill');
+      showToast('Tagihan rutin ditambahkan!');
+    });
+
+    document.getElementById('home-bills-list').addEventListener('click', (e) => {
+      const payBtn = e.target.closest('[data-pay-bill]');
+      if (payBtn) {
+        const bill = state.bills.find((b) => b.id === payBtn.dataset.payBill);
+        if (!bill) return;
+        bill.lastPaidMonth = currentMonthPrefix();
+        state.transactions.push({
+          id: uid('tx'),
+          type: 'expense',
+          amount: bill.amount,
+          category: 'Tagihan & Pulsa',
+          note: `Bayar ${bill.name}`,
+          date: todayISO(),
+          createdAt: Date.now()
+        });
+        saveState();
+        renderAll();
+        showToast(`${bill.name} ditandai lunas & dicatat!`);
+        return;
+      }
+
+      const delBtn = e.target.closest('[data-del-bill]');
+      if (delBtn) {
+        const id = delBtn.dataset.delBill;
+        state.bills = state.bills.filter((b) => b.id !== id);
+        saveState();
+        renderAll();
+        showToast('Tagihan dihapus.');
+      }
+    });
+
     // History search & filters
     document.getElementById('tx-search').addEventListener('input', renderHistory);
     document.querySelectorAll('#tx-filters .chip').forEach((chip) => {
@@ -701,7 +1022,6 @@
       });
     });
 
-    // Delete single transaction (delegated)
     document.getElementById('history-list').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-del-tx]');
       if (!btn) return;
@@ -798,6 +1118,27 @@
       saveState();
       renderAll();
       showToast('Batas pengeluaran disimpan!');
+    });
+
+    document.getElementById('ban-presets').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-preset]');
+      if (!btn) return;
+      const p = BAN_PRESETS[btn.dataset.preset];
+      if (!p) return;
+      if (state.bans.some((b) => b.name === p.name)) {
+        showToast('Larangan ini sudah ada di daftar!');
+        return;
+      }
+      state.bans.push({
+        id: uid('ban'),
+        ...p,
+        active: true,
+        createdAt: todayISO(),
+        lastBrokenDate: null
+      });
+      saveState();
+      renderAll();
+      showToast(`"${p.name}" diaktifkan!`);
     });
 
     document.getElementById('btn-add-ban').addEventListener('click', () => {
@@ -923,15 +1264,18 @@
     document.getElementById('btn-clear-all').addEventListener('click', () => {
       openConfirm(
         'Reset Total Semua Data?',
-        'Seluruh transaksi, target tabungan, batas harian, dan larangan jajan akan dihapus permanen dari HP ini.',
+        'Seluruh transaksi, target tabungan, tagihan, PIN, batas harian, dan larangan jajan akan dihapus permanen dari HP ini.',
         () => {
           localStorage.removeItem(STORAGE_KEY);
           state = {
             theme: state.theme,
+            hideBalance: false,
+            pin: null,
             dailyLimit: 0,
             monthlyLimit: 0,
             transactions: [],
             goals: [],
+            bills: [],
             bans: []
           };
           saveState();
@@ -954,6 +1298,10 @@
     requestPersistentStorage();
     bindEvents();
     renderAll();
+
+    if (state.pin) {
+      openPinScreen('unlock');
+    }
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
