@@ -94,6 +94,11 @@ class ReminderReceiver : BroadcastReceiver() {
                 "Ingat larangan jajanmu di DompetKu. Pertahankan streak hematmu hari ini!"
             )
             scheduleAlarm(
+                context, 104, 18, 0,
+                "🍳 Malam Ini Wajib Masak!",
+                "Jangan beli jajan atau pesan GoFood malam ini! Masak sendiri di rumah dan simpan uangnya buat target tabunganmu."
+            )
+            scheduleAlarm(
                 context, 103, 20, 30,
                 "💰 Rekap & Nabung Hari Ini",
                 "Sudah catat pengeluaran GoPay/tunai hari ini? Cek sisa jatah harian & setor ke target tabunganmu."
@@ -105,7 +110,7 @@ class ReminderReceiver : BroadcastReceiver() {
             prefs.edit().putBoolean(KEY_ENABLED, false).apply()
 
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            for (id in listOf(101, 102, 103)) {
+            for (id in listOf(101, 102, 103, 104)) {
                 val intent = Intent(context, ReminderReceiver::class.java)
                 val pi = PendingIntent.getBroadcast(
                     context, id, intent,
