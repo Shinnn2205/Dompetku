@@ -1,9 +1,13 @@
 package com.dompetku.app
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
@@ -15,6 +19,7 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
@@ -39,9 +44,33 @@ class MainActivity : AppCompatActivity() {
         callback.onReceiveValue(results)
     }
 
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            ReminderReceiver.scheduleDailyReminders(this)
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        ReminderReceiver.ensureChannel(this)
+        val prefs = getSharedPreferences(ReminderReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(ReminderReceiver.KEY_ENABLED, true)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    ReminderReceiver.scheduleDailyReminders(this)
+                } else {
+                    notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            } else {
+                ReminderReceiver.scheduleDailyReminders(this)
+            }
+        }
 
         webView = WebView(this)
         setContentView(webView)
@@ -103,6 +132,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     inner class AndroidBridge {
+        @JavascriptInterface
+        fun setRemindersEnabled(enabled: Boolean) {
+            runOnUiThread {
+                if (enabled) {
+                    ReminderReceiver.scheduleDailyReminders(this@MainActivity)
+                } else {
+                    ReminderReceiver.cancelDailyReminders(this@MainActivity)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun areRemindersEnabled(): Boolean {
+            val prefs = getSharedPreferences(ReminderReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(ReminderReceiver.KEY_ENABLED, true)
+        }
+
+        @JavascriptInterface
+        fun testNotification() {
+            runOnUiThread {
+                ReminderReceiver.showNotification(
+                    this@MainActivity,
+                    999,
+                    "🍳 Pengingat DompetKu Aktif!",
+                    "Kamu akan diingatkan rutin untuk masak sendiri, tahan jajan, dan setor tabungan."
+                )
+            }
+        }
+
         @JavascriptInterface
         fun exportBackup(jsonContent: String, filename: String) {
             runOnUiThread {

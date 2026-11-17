@@ -125,6 +125,16 @@
           <p class="hint-text" id="daily-guard-hint">Atur batas harian di menu Larangan agar lebih hemat.</p>
         </div>
 
+        <!-- Cooking Challenge Card -->
+        <div class="card" id="cooking-card">
+          <div class="card-header">
+            <h3>🍳 Tantangan Masak Sendiri</h3>
+            <span class="badge badge-success" id="cook-streak-badge">🔥 0 hari</span>
+          </div>
+          <p class="body-text" id="cook-summary-text">Masak sendiri hari ini daripada pesan GoFood/jajan di luar. Hemat ±Rp 25.000/hari!</p>
+          <button class="btn-primary btn-full" id="btn-cook-today">🍳 Saya Masak Sendiri Hari Ini (+Hemat Rp 25rb)</button>
+        </div>
+
         <!-- 7-Day Spending Chart + Donut -->
         <div class="card">
           <div class="card-header">
@@ -253,6 +263,20 @@
       <section class="tab-view" id="tab-settings">
         <div class="section-top">
           <h2>Pengaturan &amp; Data HP</h2>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>🔔 Pengingat Harian (Masak &amp; Nabung)</h3>
+            <span class="badge badge-success" id="notif-status-badge">Aktif</span>
+          </div>
+          <p class="body-text">
+            Aplikasi akan mengirim notifikasi pengingat otomatis setiap hari pukul <strong>10:45</strong> (Masak yuk!), <strong>16:30</strong> (Tahan jajan!), dan <strong>20:30</strong> (Rekap &amp; Nabung).
+          </p>
+          <div class="btn-stack">
+            <button class="btn-secondary btn-full" id="btn-toggle-notif">Nonaktifkan Pengingat</button>
+            <button class="btn-outline btn-full" id="btn-test-notif">🔔 Kirim Tes Notifikasi Sekarang</button>
+          </div>
         </div>
 
         <div class="card">

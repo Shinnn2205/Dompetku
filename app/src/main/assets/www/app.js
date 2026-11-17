@@ -64,6 +64,8 @@
     transactions: [],
     goals: [],
     bills: [],
+    cookDays: [],
+    cookSavedTotal: 0,
     bans: [
       {
         id: 'ban_default_1',
@@ -174,6 +176,8 @@
         transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
         goals: Array.isArray(parsed.goals) ? parsed.goals : [],
         bills: Array.isArray(parsed.bills) ? parsed.bills : [],
+        cookDays: Array.isArray(parsed.cookDays) ? parsed.cookDays : [],
+        cookSavedTotal: Number(parsed.cookSavedTotal) || 0,
         bans: Array.isArray(parsed.bans) ? parsed.bans : []
       };
     } catch {
@@ -533,6 +537,38 @@
       .join('');
   }
 
+  function getCookStreak() {
+    const set = new Set(state.cookDays || []);
+    let streak = 0;
+    for (let i = 0; i < 365; i++) {
+      const iso = offsetDateISO(i);
+      if (set.has(iso)) streak++;
+      else if (i === 0) continue; // Hari ini belum dicek, hitung dari kemarin
+      else break;
+    }
+    return streak;
+  }
+
+  function renderCooking() {
+    const today = todayISO();
+    const cookedToday = (state.cookDays || []).includes(today);
+    const streak = getCookStreak();
+    document.getElementById('cook-streak-badge').textContent = `🔥 ${streak} hari`;
+    document.getElementById('cook-summary-text').textContent =
+      `Total hemat dari masak sendiri: ${formatRupiah(state.cookSavedTotal || 0, true)}. Masak sendiri bikin target tabunganmu cepat tercapai!`;
+
+    const btn = document.getElementById('btn-cook-today');
+    if (cookedToday) {
+      btn.textContent = '✅ Keren! Kamu Sudah Masak Hari Ini';
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+    } else {
+      btn.textContent = '🍳 Saya Masak Sendiri Hari Ini (+Hemat Rp 25rb)';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }
+
   function renderHome() {
     const balance = computeBalance();
     const { income, expense } = computeMonthTotals();
@@ -585,6 +621,7 @@
     renderWeeklyChart();
     renderDonutBreakdown();
     renderBills();
+    renderCooking();
 
     // Active Bans Preview
     const bansPreview = document.getElementById('home-bans-preview');
@@ -789,6 +826,16 @@
       pinBadge.className = 'badge';
       disableBtn.style.display = 'none';
     }
+
+    const notifBadge = document.getElementById('notif-status-badge');
+    const notifToggleBtn = document.getElementById('btn-toggle-notif');
+    const enabled =
+      window.AndroidBridge && typeof window.AndroidBridge.areRemindersEnabled === 'function'
+        ? window.AndroidBridge.areRemindersEnabled()
+        : true;
+    notifBadge.textContent = enabled ? 'Aktif' : 'Nonaktif';
+    notifBadge.className = enabled ? 'badge badge-success' : 'badge';
+    notifToggleBtn.textContent = enabled ? 'Nonaktifkan Pengingat' : 'Aktifkan Pengingat';
   }
 
   function renderAll() {
@@ -856,6 +903,38 @@
       saveState();
       renderAll();
       showToast(state.hideBalance ? 'Saldo disembunyikan 🙈' : 'Saldo ditampilkan 👁️');
+    });
+
+    // Cooking Challenge
+    document.getElementById('btn-cook-today').addEventListener('click', () => {
+      const today = todayISO();
+      if ((state.cookDays || []).includes(today)) return;
+      state.cookDays = [...(state.cookDays || []), today];
+      state.cookSavedTotal = (state.cookSavedTotal || 0) + 25000;
+      saveState();
+      renderAll();
+      showToast('Mantap! Streak masak bertambah & hemat Rp 25.000 🍳');
+    });
+
+    // Native Android Notifications
+    document.getElementById('btn-toggle-notif').addEventListener('click', () => {
+      if (!window.AndroidBridge || typeof window.AndroidBridge.setRemindersEnabled !== 'function') {
+        showToast('Fitur notifikasi otomatis aktif di aplikasi Android (.apk).');
+        return;
+      }
+      const currentlyEnabled = window.AndroidBridge.areRemindersEnabled();
+      window.AndroidBridge.setRemindersEnabled(!currentlyEnabled);
+      renderSettings();
+      showToast(!currentlyEnabled ? 'Pengingat harian diaktifkan 🔔' : 'Pengingat harian dimatikan.');
+    });
+
+    document.getElementById('btn-test-notif').addEventListener('click', () => {
+      if (window.AndroidBridge && typeof window.AndroidBridge.testNotification === 'function') {
+        window.AndroidBridge.testNotification();
+        showToast('Tes notifikasi dikirim! Cek panel notifikasi HP.');
+      } else {
+        showToast('Tes notifikasi hanya berjalan di aplikasi Android (.apk).');
+      }
     });
 
     // PIN Keypad
