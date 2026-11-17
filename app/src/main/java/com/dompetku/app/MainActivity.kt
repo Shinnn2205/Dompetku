@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -1506,23 +1507,28 @@ fun AddTransactionSheet(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(10_000L to "10rb", 15_000L to "15rb", 17_000L to "17rb", 20_000L to "20rb").forEach { (amt, lbl) ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            ) {
+                listOf(10_000L to "10rb", 15_000L to "15rb", 17_000L to "17rb", 20_000L to "20rb", 50_000L to "50rb").forEach { (amt, lbl) ->
                     SuggestionChip(
                         onClick = { amountStr = amt.toString() },
-                        label = { Text(lbl) }
+                        label = { Text(lbl, maxLines = 1) }
                     )
                 }
             }
-            // Category chips
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                categories.take(3).forEach { cat ->
-                    FilterChip(selected = category == cat, onClick = { category = cat }, label = { Text(cat, fontSize = 11.sp) })
-                }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                categories.drop(3).forEach { cat ->
-                    FilterChip(selected = category == cat, onClick = { category = cat }, label = { Text(cat, fontSize = 11.sp) })
+            // Category chips (horizontal scroll so labels never wrap/clip)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                categories.forEach { cat ->
+                    FilterChip(
+                        selected = category == cat,
+                        onClick = { category = cat },
+                        label = { Text(cat, fontSize = 12.sp, maxLines = 1) }
+                    )
                 }
             }
             OutlinedTextField(
@@ -1577,7 +1583,10 @@ fun SettingsDialog(
         onDismissRequest = onDismiss,
         title = { Text("Pengaturan & Data", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
