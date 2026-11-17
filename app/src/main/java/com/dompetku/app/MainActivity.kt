@@ -1,13 +1,11 @@
 package com.dompetku.app
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -180,18 +178,6 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Gagal mengekspor data", Toast.LENGTH_SHORT).show()
         }
     }
-}
-
-fun isNotificationListenerEnabled(context: Context): Boolean {
-    val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
-    val cn = ComponentName(context, PaymentMonitorService::class.java).flattenToString()
-    return cn in flat
-}
-
-fun isAccessibilityBlockerEnabled(context: Context): Boolean {
-    val flat = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-    val cn = ComponentName(context, AppBlockerService::class.java).flattenToString()
-    return cn in flat
 }
 
 @Composable
@@ -1422,8 +1408,6 @@ fun SettingsDialog(
     onResetAll: () -> Unit
 ) {
     val context = LocalContext.current
-    val listenerActive = isNotificationListenerEnabled(context)
-    val blockerActive = isAccessibilityBlockerEnabled(context)
     var showPinInput by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -1444,54 +1428,6 @@ fun SettingsDialog(
                         checked = state.ongoingBar,
                         onCheckedChange = { onUpdateState(state.copy(ongoingBar = it)) }
                     )
-                }
-
-                HorizontalDivider()
-
-                Text("Deteksi Transaksi GoPay / E-Wallet", fontWeight = FontWeight.Medium)
-                Text(
-                    if (listenerActive) "Aktif — DompetKu akan mengingatkan saat ada notif pembayaran."
-                    else "Belum aktif — Izinkan akses notifikasi agar DompetKu otomatis mengingatkan saat transaksi GoPay/Shopee.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (listenerActive) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedButton(
-                    onClick = {
-                        context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (listenerActive) "Kelola Izin Notifikasi" else "Aktifkan Deteksi GoPay")
-                }
-
-                HorizontalDivider()
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Blokir App Jajan (Gojek/Shopee/Grab)", fontWeight = FontWeight.Medium)
-                        Text(
-                            if (blockerActive) "Aktif — Cegat saat jatah habis atau malam jam 18:00+"
-                            else "Belum aktif — Izinkan Aksesibilitas agar DompetKu bisa mencegat saat mau jajan",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (blockerActive) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = state.appBlockerEnabled,
-                        onCheckedChange = { onUpdateState(state.copy(appBlockerEnabled = it)) }
-                    )
-                }
-                OutlinedButton(
-                    onClick = {
-                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (blockerActive) "Kelola Izin Pemblokir" else "Aktifkan Pemblokir App Jajan")
                 }
 
                 OutlinedButton(
