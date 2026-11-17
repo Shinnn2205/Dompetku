@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.DompetKu" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">#059669</item>
+        <item name="android:navigationBarColor">#0f172a</item>
+    </style>
+</resources>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="DompetKu" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <title>DompetKu — Atur Keuangan &amp; Larangan Jajan</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">💳</div>
+        <div>
+          <h1 class="brand-title">DompetKu</h1>
+          <p class="brand-sub" id="header-date">Memuat...</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="btn-theme" aria-label="Ganti Tema" title="Ganti Tema">🌙</button>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- TAB 1: BERANDA -->
+      <section class="tab-view active" id="tab-home">
+        <!-- Balance Card -->
+        <div class="balance-card">
+          <div class="balance-top">
+            <span class="balance-label">Total Saldo Tersedia</span>
+            <span class="storage-pill" title="Data tersimpan lokal di HP">💾 Lokal</span>
+          </div>
+          <div class="balance-amount" id="home-balance">Rp 0</div>
+          <div class="balance-stats">
+            <div class="stat-item">
+              <span class="stat-dot income"></span>
+              <div>
+                <small>Pemasukan Bulan Ini</small>
+                <strong id="home-income">Rp 0</strong>
+              </div>
+            </div>
+            <div class="stat-item">
+              <span class="stat-dot expense"></span>
+              <div>
+                <small>Pengeluaran Bulan Ini</small>
+                <strong id="home-expense">Rp 0</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button class="action-btn income" id="btn-quick-income">
+            <span class="action-icon">➕</span>
+            <span>Catat Masuk</span>
+          </button>
+          <button class="action-btn expense" id="btn-quick-expense">
+            <span class="action-icon">➖</span>
+            <span>Catat Keluar</span>
+          </button>
+        </div>
+
+        <!-- Daily Limit Guard Card -->
+        <div class="card" id="daily-guard-card">
+          <div class="card-header">
+            <h3>🛡️ Jatah Pengeluaran Hari Ini</h3>
+            <span class="badge" id="daily-guard-badge">Aman</span>
+          </div>
+          <div class="daily-guard-numbers">
+            <span>Terpakai: <strong id="daily-spent">Rp 0</strong></span>
+            <span>Batas: <strong id="daily-limit-text">Belum diatur</strong></span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="daily-progress" style="width: 0%"></div>
+          </div>
+          <p class="hint-text" id="daily-guard-hint">Atur batas harian di menu Larangan agar lebih hemat.</p>
+        </div>
+
+        <!-- Active Larangan Jajan Summary -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🚫 Status Larangan Jajan</h3>
+            <button class="link-btn" data-goto="bans">Kelola</button>
+          </div>
+          <div id="home-bans-preview" class="bans-preview-list"></div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="card">
+          <div class="card-header">
+            <h3>📊 Pengeluaran Bulan Ini</h3>
+          </div>
+          <div id="home-breakdown" class="breakdown-list"></div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🕒 Transaksi Terakhir</h3>
+            <button class="link-btn" data-goto="history">Lihat Semua</button>
+          </div>
+          <div id="home-recent" class="tx-list"></div>
+        </div>
+      </section>
+
+      <!-- TAB 2: TRANSAKSI -->
+      <section class="tab-view" id="tab-history">
+        <div class="section-top">
+          <h2>Riwayat Transaksi</h2>
+          <button class="btn-primary btn-sm" id="btn-add-tx-history">+ Tambah</button>
+        </div>
+
+        <div class="search-filter-bar">
+          <input type="search" id="tx-search" class="input" placeholder="🔍 Cari catatan atau kategori..." />
+          <div class="filter-chips" id="tx-filters">
+            <button class="chip active" data-filter="all">Semua</button>
+            <button class="chip" data-filter="income">Pemasukan</button>
+            <button class="chip" data-filter="expense">Pengeluaran</button>
+            <button class="chip" data-filter="saving">Tabungan</button>
+          </div>
+        </div>
+
+        <div id="history-list" class="tx-list-grouped"></div>
+      </section>
+
+      <!-- TAB 3: TABUNGAN -->
+      <section class="tab-view" id="tab-savings">
+        <div class="section-top">
+          <h2>Target Tabungan</h2>
+          <button class="btn-primary btn-sm" id="btn-add-goal">+ Target Baru</button>
+        </div>
+
+        <div class="summary-banner">
+          <span>Total Terkumpul di Semua Target</span>
+          <strong id="savings-total">Rp 0</strong>
+        </div>
+
+        <div id="goals-list" class="goals-grid"></div>
+      </section>
+
+      <!-- TAB 4: LARANGAN JAJAN -->
+      <section class="tab-view" id="tab-bans">
+        <div class="section-top">
+          <h2>Larangan Jajan &amp; Batas</h2>
+          <button class="btn-primary btn-sm" id="btn-add-ban">+ Larangan</button>
+        </div>
+
+        <!-- Daily & Monthly Budget Settings -->
+        <div class="card">
+          <div class="card-header">
+            <h3>⏱️ Batas Pengeluaran</h3>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="input-daily-limit">Batas Harian (Rp)</label>
+              <input type="number" id="input-daily-limit" class="input" placeholder="Contoh: 50000" min="0" inputmode="numeric" />
+            </div>
+            <div class="form-group">
+              <label for="input-monthly-limit">Batas Bulanan (Rp)</label>
+              <input type="number" id="input-monthly-limit" class="input" placeholder="Contoh: 1500000" min="0" inputmode="numeric" />
+            </div>
+          </div>
+          <button class="btn-secondary btn-full" id="btn-save-limits">Simpan Batas Pengeluaran</button>
+        </div>
+
+        <div class="info-banner">
+          <span>💡</span>
+          <p>Setiap kali kamu mencatat pengeluaran yang cocok dengan daftar larangan jajan, aplikasi akan mengingatkan dan menjaga streak hematmu!</p>
+        </div>
+
+        <div id="bans-list" class="bans-list"></div>
+      </section>
+
+      <!-- TAB 5: PENGATURAN & DATA -->
+      <section class="tab-view" id="tab-settings">
+        <div class="section-top">
+          <h2>Pengaturan &amp; Data HP</h2>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>💾 Penyimpanan Permanen di HP</h3>
+            <span class="badge badge-success">Aktif</span>
+          </div>
+          <p class="body-text">
+            Semua catatan transaksi, target tabungan, dan larangan jajan disimpan langsung di memori lokal browser HP kamu (tidak dikirim ke server mana pun).
+          </p>
+          <div class="storage-stats" id="storage-stats">
+            <span>Transaksi: <strong id="stat-tx-count">0</strong></span>
+            <span>Target: <strong id="stat-goal-count">0</strong></span>
+            <span>Larangan: <strong id="stat-ban-count">0</strong></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>📦 Cadangkan &amp; Pulihkan</h3>
+          </div>
+          <p class="body-text">Simpan file cadangan agar data aman jika ganti HP atau membersihkan cache browser.</p>
+          <div class="btn-stack">
+            <button class="btn-secondary btn-full" id="btn-export-data">⬇️ Unduh Cadangan (JSON)</button>
+            <label class="btn-outline btn-full file-btn">
+              ⬆️ Pulihkan dari File (JSON)
+              <input type="file" id="input-import-data" accept="application/json,.json" hidden />
+            </label>
+          </div>
+        </div>
+
+        <div class="card danger-card">
+          <div class="card-header">
+            <h3>🗑️ Hapus Data</h3>
+          </div>
+          <p class="body-text">Kamu bebas menghapus riwayat transaksi atau mereset seluruh aplikasi kapan saja.</p>
+          <div class="btn-stack">
+            <button class="btn-warning btn-full" id="btn-clear-tx">Hapus Riwayat Transaksi Saja</button>
+            <button class="btn-danger btn-full" id="btn-clear-all">Hapus Semua Data (Reset Total)</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>📱 Cara Pasang di Layar Utama HP</h3>
+          </div>
+          <ol class="install-steps">
+            <li><strong>Android (Chrome):</strong> Ketuk ikon menu ⋮ di kanan atas &rarr; pilih <em>"Tambahkan ke Layar utama"</em> / <em>"Install app"</em>.</li>
+            <li><strong>iPhone (Safari):</strong> Ketuk ikon Bagikan (kotak dengan panah ke atas) &rarr; pilih <em>"Add to Home Screen"</em>.</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav" aria-label="Navigasi Utama">
+      <button class="nav-item active" data-tab="home">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">Beranda</span>
+      </button>
+      <button class="nav-item" data-tab="history">
+        <span class="nav-icon">📜</span>
+        <span class="nav-label">Riwayat</span>
+      </button>
+      <button class="nav-item" data-tab="savings">
+        <span class="nav-icon">🎯</span>
+        <span class="nav-label">Tabungan</span>
+      </button>
+      <button class="nav-item" data-tab="bans">
+        <span class="nav-icon">🚫</span>
+        <span class="nav-label">Larangan</span>
+      </button>
+      <button class="nav-item" data-tab="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Data</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODAL: CATAT TRANSAKSI -->
+  <div class="modal-backdrop" id="modal-tx" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 id="modal-tx-title">Catat Transaksi</h3>
+        <button class="close-btn" data-close="modal-tx">&times;</button>
+      </div>
+      <form id="form-tx">
+        <div class="segmented-control">
+          <button type="button" class="seg-btn active" data-tx-type="expense">Pengeluaran</button>
+          <button type="button" class="seg-btn" data-tx-type="income">Pemasukan</button>
+        </div>
+        <input type="hidden" id="tx-type" value="expense" />
+
+        <div class="form-group">
+          <label for="tx-amount">Nominal (Rp)</label>
+          <input type="number" id="tx-amount" class="input input-lg" placeholder="0" min="1" required inputmode="numeric" />
+          <div class="quick-amounts">
+            <button type="button" class="amt-chip" data-amt="10000">+10rb</button>
+            <button type="button" class="amt-chip" data-amt="20000">+20rb</button>
+            <button type="button" class="amt-chip" data-amt="50000">+50rb</button>
+            <button type="button" class="amt-chip" data-amt="100000">+100rb</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="tx-category">Kategori</label>
+          <select id="tx-category" class="input" required></select>
+        </div>
+
+        <div class="form-group">
+          <label for="tx-note">Catatan (opsional)</label>
+          <input type="text" id="tx-note" class="input" placeholder="Misal: Kopi susu, makan siang, gaji..." maxlength="80" />
+        </div>
+
+        <div class="form-group">
+          <label for="tx-date">Tanggal</label>
+          <input type="date" id="tx-date" class="input" required />
+        </div>
+
+        <button type="submit" class="btn-primary btn-full">Simpan Transaksi</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PERINGATAN LARANGAN JAJAN -->
+  <div class="modal-backdrop" id="modal-ban-warning" aria-hidden="true">
+    <div class="modal-sheet modal-warning">
+      <div class="warning-icon">🚨</div>
+      <h3 id="ban-warn-title">Eits, Tahan Dulu!</h3>
+      <p id="ban-warn-message" class="body-text"></p>
+      <div class="ban-warn-actions">
+        <button type="button" class="btn-primary btn-full" id="btn-ban-cancel">✅ Batal Beli (Pertahankan Streak!)</button>
+        <button type="button" class="btn-danger-outline btn-full" id="btn-ban-proceed">Tetap Catat Pengeluaran</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TAMBAH TARGET TABUNGAN -->
+  <div class="modal-backdrop" id="modal-goal" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>Target Tabungan Baru</h3>
+        <button class="close-btn" data-close="modal-goal">&times;</button>
+      </div>
+      <form id="form-goal">
+        <div class="form-group">
+          <label for="goal-emoji">Ikon</label>
+          <select id="goal-emoji" class="input">
+            <option value="🎯">🎯 Target Umum</option>
+            <option value="🛡️">🛡️ Dana Darurat</option>
+            <option value="📱">📱 Gadget / HP</option>
+            <option value="🏍️">🏍️ Kendaraan</option>
+            <option value="✈️">✈️ Liburan</option>
+            <option value="🏠">🏠 Rumah / Kos</option>
+            <option value="💍">💍 Menikah</option>
+            <option value="🎓">🎓 Pendidikan</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="goal-name">Nama Target</label>
+          <input type="text" id="goal-name" class="input" placeholder="Misal: Dana Darurat, Beli HP" required maxlength="50" />
+        </div>
+        <div class="form-group">
+          <label for="goal-target">Nominal Target (Rp)</label>
+          <input type="number" id="goal-target" class="input" placeholder="1000000" min="1000" required inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label for="goal-deadline">Target Tanggal (opsional)</label>
+          <input type="date" id="goal-deadline" class="input" />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Buat Target</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: NABUNG KE TARGET -->
+  <div class="modal-backdrop" id="modal-deposit" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 id="deposit-title">Nabung ke Target</h3>
+        <button class="close-btn" data-close="modal-deposit">&times;</button>
+      </div>
+      <form id="form-deposit">
+        <input type="hidden" id="deposit-goal-id" />
+        <div class="form-group">
+          <label for="deposit-amount">Jumlah Setoran (Rp)</label>
+          <input type="number" id="deposit-amount" class="input input-lg" placeholder="50000" min="1" required inputmode="numeric" />
+          <div class="quick-amounts">
+            <button type="button" class="amt-chip dep-chip" data-amt="20000">+20rb</button>
+            <button type="button" class="amt-chip dep-chip" data-amt="50000">+50rb</button>
+            <button type="button" class="amt-chip dep-chip" data-amt="100000">+100rb</button>
+            <button type="button" class="amt-chip dep-chip" data-amt="500000">+500rb</button>
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="deposit-deduct-balance" checked />
+          <span>Potong dari saldo utama (catat sebagai alokasi tabungan)</span>
+        </label>
+        <button type="submit" class="btn-primary btn-full">Setor Tabungan</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TAMBAH LARANGAN JAJAN -->
+  <div class="modal-backdrop" id="modal-ban" aria-hidden="true">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>Tambah Larangan Jajan</h3>
+        <button class="close-btn" data-close="modal-ban">&times;</button>
+      </div>
+      <form id="form-ban">
+        <div class="form-group">
+          <label for="ban-name">Nama Larangan</label>
+          <input type="text" id="ban-name" class="input" placeholder="Misal: Stop Kopi Kekinian / Boba" required maxlength="50" />
+        </div>
+        <div class="form-group">
+          <label for="ban-keywords">Kata Kunci Deteksi (pisahkan koma)</label>
+          <input type="text" id="ban-keywords" class="input" placeholder="kopi, boba, es, jajan, snack" />
+          <small class="hint-text">Jika catatan atau kategori pengeluaran mengandung kata ini, peringatan akan muncul.</small>
+        </div>
+        <div class="form-group">
+          <label for="ban-category">Atau Blokir Kategori</label>
+          <select id="ban-category" class="input">
+            <option value="">-- Tidak khusus kategori --</option>
+            <option value="Jajan &amp; Minuman">Jajan &amp; Minuman</option>
+            <option value="Belanja Online">Belanja Online</option>
+            <option value="Hiburan &amp; Game">Hiburan &amp; Game</option>
+            <option value="Makan di Luar">Makan di Luar</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ban-mode">Jenis Aturan</label>
+          <select id="ban-mode" class="input">
+            <option value="strict">Blokir Total (Peringatkan setiap kali beli)</option>
+            <option value="limit">Batas Maksimal per Hari</option>
+          </select>
+        </div>
+        <div class="form-group" id="ban-limit-group" style="display: none;">
+          <label for="ban-daily-max">Maksimal per Hari (Rp)</label>
+          <input type="number" id="ban-daily-max" class="input" placeholder="15000" min="0" inputmode="numeric" />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Aktifkan Larangan</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: KONFIRMASI HAPUS -->
+  <div class="modal-backdrop" id="modal-confirm" aria-hidden="true">
+    <div class="modal-sheet modal-warning">
+      <div class="warning-icon">⚠️</div>
+      <h3 id="confirm-title">Konfirmasi</h3>
+      <p id="confirm-message" class="body-text"></p>
+      <div class="ban-warn-actions">
+        <button type="button" class="btn-danger btn-full" id="btn-confirm-yes">Ya, Lanjutkan</button>
+        <button type="button" class="btn-outline btn-full" data-close="modal-confirm">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
